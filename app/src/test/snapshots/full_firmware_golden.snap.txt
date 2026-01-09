@@ -1,0 +1,1263 @@
+# ESP32 MicroPython - Generated Firmware
+# Modules: HomeWifi, HASS, Status, Updater, WebUI
+# Version: 3.1.0
+
+import machine
+import sys
+import time
+
+try:
+    import uselect
+    spoll = uselect.poll()
+    spoll.register(sys.stdin, uselect.POLLIN)
+    HAS_POLL = True
+except Exception:
+    HAS_POLL = False
+
+try:
+    import json
+    HAS_JSON = True
+except Exception:
+    HAS_JSON = False
+
+import network
+import socket
+import struct
+import binascii
+import hashlib
+from umqtt.simple import MQTTClient
+import socket
+import socket
+import uselect
+import network
+import machine
+import os
+
+# ============ CONFIG ============
+# ============ CONFIG ============
+FIRMWARE_VERSION = "3.1.0"
+DEVICE_TYPE = "ESP32_GEN"
+MODULES = ["HomeWifi","HASS","Status","Updater","WebUI"]
+CAPS = ["GPIO","WIFI","WS","MDNS","MQTT","LED","OTA","WEB","CAPTIVE"]
+
+# ============ INTENT (Premium) ============
+# The universe this firmware believes it lives in.
+INTENT = {
+    "app_name": "ExtraTest",
+    "version": "2.0.0",
+    "modules": ["HomeWifi","HASS","Status","Updater","WebUI"],
+    "generated_by": "Extra"
+}
+
+# ============ DEVICE MODES ============
+MODES = ["AMBIENT", "PARTY", "SIGNAGE", "POWER_SAVE"]
+MODE_CONFIG = {
+    "AMBIENT": {"fps": 30, "brightness": 50, "speed": "slow"},
+    "PARTY": {"fps": 60, "brightness": 100, "speed": "fast"},
+    "SIGNAGE": {"fps": 20, "brightness": 70, "speed": "medium"},
+    "POWER_SAVE": {"fps": 10, "brightness": 20, "speed": "slow"}
+}
+current_mode = "AMBIENT"
+
+# ============ BOOT PROFILES ============
+BOOT_MODES = ["LAST_STATE", "SAFE", "SCRIPT"]
+boot_mode = "LAST_STATE"
+boot_script = []
+
+# ============ SHARED DATA STORE ============
+# Stores dynamic data from API (Weather, Crypto, Tide)
+# Keys: TEMP, TIDE, MOON, BTC, etc.
+SHARED_DATA = {}
+
+def save_state():
+    if not HAS_JSON:
+        return
+    try:
+        state = {
+            "mode": current_mode,
+            "boot_mode": boot_mode,
+            "boot_script": boot_script
+        }
+        with open("state.json", "w") as f:
+            json.dump(state, f)
+        print("OK:STATE:SAVED")
+    except Exception as e:
+        print(f"ERR:STATE:SAVE:{e}")
+
+def load_state():
+    global current_mode, boot_mode, boot_script
+    if not HAS_JSON:
+        return False
+    try:
+        with open("state.json", "r") as f:
+            state = json.load(f)
+            current_mode = state.get("mode", "AMBIENT")
+            boot_mode = state.get("boot_mode", "LAST_STATE")
+            boot_script = state.get("boot_script", [])
+        return True
+    except Exception:
+        return False
+
+def apply_mode(mode):
+    global current_mode
+    if mode in MODES:
+        current_mode = mode
+        cfg = MODE_CONFIG[mode]
+        print(f"OK:MODE:{mode}:FPS={cfg['fps']};BRIGHT={cfg['brightness']};SPEED={cfg['speed']}")
+        return True
+    return False
+
+# ============ WATCHDOG & RECOVERY ============
+WATCHDOG_TIMEOUT = 5000  # 5 seconds
+CRASH_THRESHOLD = 3      # Enter safe mode after 3 crashes
+watchdog_last = 0
+crash_count = 0
+last_crash_reason = ""
+
+def watchdog_feed():
+    global watchdog_last
+    watchdog_last = time.ticks_ms()
+
+def watchdog_check():
+    global last_crash_reason
+    if time.ticks_diff(time.ticks_ms(), watchdog_last) > WATCHDOG_TIMEOUT:
+        last_crash_reason = "WATCHDOG_TIMEOUT"
+        handle_crash(last_crash_reason)
+        return True
+    return False
+
+# === FASTLED MATH PORT FOR MICROPYTHON ===
+import math
+
+def sin8(theta):
+    theta = theta & 0xFF
+    return int((math.sin(theta * math.pi * 2 / 255) + 1) * 127.5)
+
+def cos8(theta):
+    return sin8(theta + 64)
+
+def scale8(i, scale):
+    return (i * scale) >> 8
+
+def qadd8(i, j):
+    t = i + j
+    if t > 255: return 255
+    return t
+
+def qsub8(i, j):
+    t = i - j
+    if t < 0: return 0
+    return t
+
+def color_from_palette(palette, index, brightness=255):
+    entry_count = len(palette)
+    region_size = 256 / entry_count
+    
+    entry_index = int(index // region_size)
+    offset = int(index % region_size)
+    ratio = offset / region_size
+    
+    c1 = palette[entry_index % entry_count]
+    c2 = palette[(entry_index + 1) % entry_count]
+    
+    r = c1[0] + (c2[0] - c1[0]) * ratio
+    g = c1[1] + (c2[1] - c1[1]) * ratio
+    b = c1[2] + (c2[2] - c1[2]) * ratio
+    
+    if brightness != 255:
+        r = scale8(int(r), brightness)
+        g = scale8(int(g), brightness)
+        b = scale8(int(b), brightness)
+        
+    return (int(r), int(g), int(b))
+
+# === PREMIUM ANIMATION HELPERS ===
+
+# Gamma 2.8 lookup table for perceptual brightness (256 entries)
+GAMMA_TABLE = [
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+    1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,
+    3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,7,
+    7,7,8,8,8,9,9,9,10,10,10,11,11,11,12,12,
+    13,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,
+    20,21,21,22,22,23,24,24,25,25,26,27,27,28,29,29,
+    30,31,31,32,33,34,34,35,36,37,37,38,39,40,40,41,
+    42,43,44,45,46,46,47,48,49,50,51,52,53,54,55,56,
+    57,58,59,60,61,62,63,64,65,66,68,69,70,71,72,73,
+    75,76,77,78,80,81,82,84,85,86,88,89,90,92,93,95,
+    96,98,99,101,102,104,105,107,109,110,112,114,115,117,119,120,
+    122,124,126,127,129,131,133,135,137,138,140,142,144,146,148,150,
+    152,154,156,158,160,162,164,167,169,171,173,175,177,180,182,184,
+    186,189,191,193,196,198,200,203,205,208,210,213,215,218,220,223,
+    225,228,231,233,236,239,241,244,247,249,252,255,255,255,255,255
+]
+
+def gamma_correct(r, g, b):
+    return (GAMMA_TABLE[r], GAMMA_TABLE[g], GAMMA_TABLE[b])
+
+# Easing functions for smooth animations (FastLED-style)
+def ease8InOutQuad(i):
+    i = max(0, min(255, i))
+    if i < 128:
+        return (i * i) >> 7
+    j = 255 - i
+    return 255 - ((j * j) >> 7)
+
+def ease8InOutCubic(i):
+    i = max(0, min(255, i))
+    j = i
+    if j < 128:
+        return (j * j * j) >> 14
+    j = 255 - j
+    return 255 - ((j * j * j) >> 14)
+
+# Triangle and quadratic wave functions
+def triwave8(x):
+    x = x & 0xFF
+    if x < 128:
+        return x * 2
+    return 255 - (x - 128) * 2
+
+def quadwave8(x):
+    return ease8InOutQuad(triwave8(x))
+
+def cubicwave8(x):
+    return ease8InOutCubic(triwave8(x))
+
+# HSV to RGB conversion for smooth color transitions
+def hsv_to_rgb(h, s, v):
+    h = h % 256
+    if s == 0:
+        return (v, v, v)
+    region = h // 43
+    remainder = (h - (region * 43)) * 6
+    p = (v * (255 - s)) >> 8
+    q = (v * (255 - ((s * remainder) >> 8))) >> 8
+    t = (v * (255 - ((s * (255 - remainder)) >> 8))) >> 8
+    if region == 0: return (v, t, p)
+    if region == 1: return (q, v, p)
+    if region == 2: return (p, v, t)
+    if region == 3: return (p, q, v)
+    if region == 4: return (t, p, v)
+    return (v, p, q)
+
+# Smooth linear interpolation for color blending
+def lerp_rgb(c1, c2, t):
+    t = max(0.0, min(1.0, t))
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t)
+    )
+
+# Smooth eased interpolation (feels more natural)
+def lerp_rgb_eased(c1, c2, t):
+    t = max(0.0, min(1.0, t))
+    eased_t = ease8InOutQuad(int(t * 255)) / 255.0
+    return lerp_rgb(c1, c2, eased_t)
+
+# Crossfade state for smooth animation transitions
+CROSSFADE_DURATION = 300  # ms
+crossfade_start = 0
+crossfade_progress = 1.0
+prev_buffer = []
+next_anim = ""
+
+def start_crossfade(new_anim, led_count):
+    global crossfade_start, crossfade_progress, next_anim, prev_buffer
+    crossfade_start = time.ticks_ms()
+    crossfade_progress = 0.0
+    next_anim = new_anim
+    # Save current LED state to prev_buffer
+    prev_buffer = [(0,0,0)] * led_count
+
+def update_crossfade():
+    global crossfade_progress
+    if crossfade_progress >= 1.0:
+        return 1.0
+    elapsed = time.ticks_diff(time.ticks_ms(), crossfade_start)
+    crossfade_progress = min(1.0, elapsed / CROSSFADE_DURATION)
+    return ease8InOutQuad(int(crossfade_progress * 255)) / 255.0
+
+# FASTLED PALETTES
+PALETTE_RAINBOW = [
+    (255, 0, 0), (171, 85, 0), (171, 171, 0), (0, 255, 0),
+    (0, 171, 85), (0, 0, 255), (85, 0, 171), (255, 0, 255)
+]
+PALETTE_OCEAN = [
+    (0, 0, 50), (0, 20, 100), (0, 100, 200), (0, 200, 255),
+    (50, 255, 200), (0, 200, 255), (0, 100, 200), (0, 20, 100)
+]
+PALETTE_FIRE = [
+    (0, 0, 0), (30, 0, 0), (100, 0, 0), (180, 20, 0),
+    (255, 50, 0), (255, 120, 0), (255, 200, 0), (255, 255, 100)
+]
+PALETTE_CLOUD = [
+    (50, 50, 80), (100, 100, 120), (150, 150, 180), (200, 200, 220),
+    (220, 220, 220), (200, 200, 220), (150, 150, 180), (100, 100, 120)
+]
+
+# === GLOBAL HELPER FUNCTIONS ===
+def safe_sleep(duration):
+    time.sleep(duration)
+    # Check for serial input during sleep to allow interruption
+    if HAS_POLL and sys.stdin in uselect.select([sys.stdin], [], [], 0)[0]:
+        return
+
+
+# ============ EVENT BUS ============
+def dispatch_event(evt):
+    # 1. Print to Serial (always)
+    print(f"EVT:{evt}")
+    
+    # 2. Check Automation Rules (if enabled)
+    if 'check_rules' in globals():
+        check_rules(evt)
+
+def handle_crash(reason):
+    global crash_count, boot_mode
+    crash_count += 1
+    print(f"SYS:CRASH:{reason}:COUNT={crash_count}")
+    # Auto enter safe mode after threshold
+    if crash_count >= CRASH_THRESHOLD:
+        boot_mode = "SAFE"
+        save_state()
+        print("SYS:CRASH:SAFE_MODE_ENABLED")
+    # Store crash info
+    try:
+        with open("crash.log", "a") as f:
+            f.write(f"{time.time()}:{reason}\n")
+    except Exception:
+        pass
+
+# ============ GLOBALS ============
+
+# ============ GLOBALS ============
+wifi_sta = network.WLAN(network.STA_IF)
+wifi_ap = network.WLAN(network.AP_IF)
+wifi_manual_connect = False
+ws_clients = []
+ws_server = None
+mdns_sock = None
+HOSTNAME = "led-device"
+
+
+# MQTT Globals
+MQTT_BROKER = "10.0.0.1"
+MQTT_PORT = 1883
+MQTT_USER = None
+MQTT_PASS = None
+MQTT_TOPIC_PREFIX = "home"
+mqtt_client = None
+
+def mqtt_callback(topic, msg):
+    try:
+        t = topic.decode()
+        m = msg.decode()
+        print(f"MQTT: Recv {t}: {m}")
+        # Map MQTT to internal commands
+        # Topic: prefix/cmd -> Payload: VAR:SET:TEMP:25
+        if t.endswith("/cmd"):
+            handle_command(m)
+    except Exception as e:
+        print(f"MQTT: CB Error: {e}")
+
+def setup_mqtt():
+    global mqtt_client
+    try:
+        client_id = f"esp32_{unique_id().hex()}"
+        mqtt_client = MQTTClient(client_id, MQTT_BROKER, port=MQTT_PORT, user=MQTT_USER, password=MQTT_PASS)
+        mqtt_client.set_callback(mqtt_callback)
+        mqtt_client.connect()
+        print("MQTT: Connected")
+        mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/cmd")
+        
+        # HA Discovery
+        if True:
+            import json
+            disc_topic = f"homeassistant/light/{client_id}/config"
+            payload = {
+                "name": "HASS",
+                "unique_id": client_id,
+                "cmd_t": f"{MQTT_TOPIC_PREFIX}/cmd",
+                "stat_t": f"{MQTT_TOPIC_PREFIX}/state",
+                "schema": "json",
+                "brightness": True,
+                "rgb": True,
+                "effect": True
+            }
+            # mqtt_client.publish(disc_topic, json.dumps(payload)) # Enable for real HA
+            
+    except Exception as e:
+        print(f"MQTT: Fail {e}")
+        mqtt_client = None
+
+def mqtt_check():
+    if mqtt_client:
+        try:
+            mqtt_client.check_msg()
+        except Exception:
+            print("MQTT: Lost connection")
+            setup_mqtt()
+
+led_Status = machine.Pin(2, machine.Pin.OUT)
+led_Status.value(0)
+
+# OTA Globals
+def start_ota_listener():
+    # Simple socket listener that accepts a file upload on port 8266
+    # This is a blocking operation usually, or async.
+    # For stability, we might just print instructions or start a separate mode.
+    pass
+
+def do_ota_update(url):
+    # Fetch from URL
+    try:
+        import urequests
+        print(f"OTA: Downloading from {url}")
+        recv = urequests.get(url)
+        if recv.status_code == 200:
+            with open('main.py', 'w') as f:
+                f.write(recv.text)
+            print("OTA: Success. Resetting...")
+            import machine
+            machine.reset()
+        else:
+            print("OTA: Fail status")
+    except Exception as e:
+        print(f"OTA: Error {e}")
+
+
+# Web Server v2 Globals
+WEB_PORT = 80
+WEB_TITLE = "Control Panel"
+TECH_PIN = "1234"
+CAPTIVE_PORTAL = True
+
+http_socket = None
+http_poll = None
+dns_socket = None
+
+# Session management (Simple Token)
+tech_session_token = None
+
+def setup_web_server():
+    global http_socket, http_poll, dns_socket
+    try:
+        # HTTP Server
+        addr = socket.getaddrinfo('0.0.0.0', WEB_PORT)[0][-1]
+        http_socket = socket.socket()
+        http_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        http_socket.bind(addr)
+        http_socket.listen(5)
+        
+        http_poll = uselect.poll()
+        http_poll.register(http_socket, uselect.POLLIN)
+        print(f"WEB: Server listening on port {WEB_PORT}")
+
+        # DNS Server (Captive Portal)
+        if CAPTIVE_PORTAL and not wifi_sta.isconnected():
+            setup_ap_mode()
+            dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            dns_socket.setblocking(False)
+            dns_socket.bind(('', 53))
+            http_poll.register(dns_socket, uselect.POLLIN)
+            print("WEB: Captive Portal DNS Active")
+
+    except Exception as e:
+        print(f"WEB: Setup failed: {e}")
+
+def setup_ap_mode():
+    import binascii
+    uid = binascii.hexlify(machine.unique_id()).decode()[-4:]
+    ssid = f"Device-{uid}"
+    ap = network.WLAN(network.AP_IF)
+    ap.active(True)
+    ap.config(essid=ssid, authmode=0)
+    print(f"WEB: AP Mode started: {ssid} (192.168.4.1)")
+
+def handle_dns_request(sock):
+    try:
+        data, addr = sock.recvfrom(1024)
+        # Simple DNS Hijack: Respond with own IP (192.168.4.1) for ALL queries
+        # DNS Header: ID(2), Flags(2), QCount(2), Ans(2), Auth(2), Add(2)
+        # We construct a response that points to 192.168.4.1
+        
+        # Extract Transaction ID
+        trans_id = data[:2]
+        
+        # Flags: Standard Query Response, No Error
+        flags = b'\x81\x80'
+        
+        # Counts: 1 Question, 1 Answer
+        counts = b'\x00\x01\x00\x01\x00\x00\x00\x00'
+        
+        # Question Section (copy from request)
+        # Find end of question (null byte)
+        idx = 12
+        while data[idx] != 0:
+            idx += 1 + data[idx]
+        idx += 5 # Skip null + QTYPE + QCLASS
+        question = data[12:idx]
+        
+        # Answer Section
+        # Name Ptr (0xC00C), TYPE A (0x0001), CLASS IN (0x0001), TTL (60s), LEN (4), IP
+        answer = b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\xa8\x04\x01'
+        
+        response = trans_id + flags + counts + question + answer
+        sock.sendto(response, addr)
+    except Exception:
+        pass
+
+def handle_web_request(client):
+    global tech_session_token
+    try:
+        # Read request line
+        req_line = client.readline()
+        if not req_line:
+            client.close()
+            return
+            
+        req_str = req_line.decode().strip()
+        method, path, proto = req_str.split()
+        
+        # Read headers
+        headers = {}
+        while True:
+            h = client.readline()
+            if not h or h == b'\r\n': break
+            try:
+                k, v = h.decode().strip().split(':', 1)
+                headers[k.strip().lower()] = v.strip()
+            except Exception: pass
+
+        # Routing
+        if path == "/tech/login" and method == "POST":
+            handle_tech_login(client)
+        elif path == "/tech/update" and method == "POST":
+            # Check auth
+            if not is_tech_auth(headers):
+                send_401(client)
+            else:
+                handle_ota_update(client, headers)
+        elif path == "/api/wifi" and method == "POST":
+            handle_wifi_config(client)
+        elif path == "/api/status":
+            import json
+            status = {
+                "mode": current_mode,
+                "uptime": time.ticks_ms() // 1000,
+                "wifi": wifi_sta.ifconfig()[0] if wifi_sta else "disconnected"
+            }
+            client.send("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json.dumps(status))
+        elif path == "/api/screen" and method == "POST":
+            handle_screen_api(client, req_str)
+        elif path.startswith("/tech"):
+            if not is_tech_auth(headers):
+                serve_tech_login(client)
+            else:
+                serve_tech_dashboard(client)
+        else:
+            # Captive Portal Checks
+            if path == "/generate_204" or path == "/hotspot-detect.html" or "apple" in path:
+                # Redirect to root
+                client.send("HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n")
+            else:
+                # Basic Command handling (GET /?cmd=...)
+                if "cmd=" in path:
+                    handle_legacy_cmd(path)
+                    client.send("HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n")
+                else:
+                    serve_user_dashboard(client)
+                
+        client.close()
+    except Exception as e:
+        print(f"WEB: Req Error: {e}")
+        try: client.close()
+        except Exception: pass
+
+def is_tech_auth(headers):
+    cookie = headers.get('cookie', '')
+    if f"token={tech_session_token}" in cookie and tech_session_token is not None:
+        return True
+    return False
+
+def send_401(client):
+    client.send("HTTP/1.1 401 Unauthorized\r\n\r\nUnauthorized")
+
+def handle_tech_login(client):
+    global tech_session_token
+    # Read body (PIN)
+    body = client.read(1024).decode()
+    if TECH_PIN in body:
+        import urandom
+        tech_session_token = str(urandom.getrandbits(32))
+        client.send(f"HTTP/1.1 200 OK\r\nSet-Cookie: token={tech_session_token}; Path=/\r\n\r\nOK")
+    else:
+        send_401(client)
+
+def handle_ota_update(client, headers):
+    try:
+        content_len = int(headers.get('content-length', 0))
+        if content_len == 0:
+            client.send("HTTP/1.1 400 Bad Request\r\n\r\nNo Content")
+            return
+
+        print(f"WEB: Starting OTA Update ({content_len} bytes)")
+        
+        # We need to write to the 'next' partition. 
+        # For simplicity in this snippets, we will write to a file 'update.bin' 
+        # and rely on a bootloader or just overwrite main.py if it's a script update.
+        # BUT for true OTA, we usually use esp32.Partition.
+        # Here we will overwrite main.py for script-based updates (Dangerous but standard for MicroPython file-based fw)
+        
+        with open('main.py.new', 'wb') as f:
+            remaining = content_len
+            while remaining > 0:
+                chunk_size = 1024 if remaining > 1024 else remaining
+                chunk = client.read(chunk_size)
+                if not chunk: break
+                f.write(chunk)
+                remaining -= len(chunk)
+        
+        # Swap files
+        import os
+        os.rename('main.py.new', 'main.py')
+        
+        client.send("HTTP/1.1 200 OK\r\n\r\nUpdate Complete. Rebooting...")
+        time.sleep(1)
+        machine.reset()
+        
+    except Exception as e:
+        print(f"WEB: OTA Failed: {e}")
+        client.send("HTTP/1.1 500 Error\r\n\r\nUpdate Failed")
+
+def handle_wifi_config(client):
+    # Read JSON body {"ssid": "...", "pass": "..."}
+    try:
+        body_json = client.read(1024).decode()
+        # Parse logic (simplified)
+        import json
+        creds = json.loads(body_json)
+        
+        # Save to NVS
+        import esp32
+        nvs = esp32.NVS("system")
+        nvs.set_blob("wifi_creds", json.dumps(creds))
+        nvs.commit()
+        
+        client.send("HTTP/1.1 200 OK\r\n\r\nSaved. Rebooting...")
+        time.sleep(1)
+        machine.reset()
+    except Exception:
+        client.send("HTTP/1.1 500 Error\r\n\r\nSave Failed")
+
+def serve_tech_login(client):
+    html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:50px}input{padding:10px;font-size:18px;text-align:center}button{padding:10px 20px;font-size:18px;background:#007bff;color:#fff;border:none;margin-top:10px}</style></head>
+    <body><h2>Technician Access</h2><input type="password" id="pin" placeholder="PIN"><br><button onclick="login()">Login</button>
+    <script>function login(){fetch('/tech/login',{method:'POST',body:document.getElementById('pin').value}).then(r=>{if(r.ok)location.reload();else alert('Invalid PIN')})}</script></body></html>"""
+    client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
+
+def serve_tech_dashboard(client):
+    html = """<!DOCTYPE html><html><head><title>Tech Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#1a1a1a;color:#0f0;font-family:monospace;padding:20px}.card{border:1px solid #333;padding:15px;margin-bottom:15px}button{background:#333;color:#fff;border:1px solid #555;padding:8px;cursor:pointer}</style></head>
+    <body><h1>TECH MODE</h1>
+    <div class="card"><h3>OTA Update</h3><input type="file" id="fw"><button onclick="upload()">Upload Firmware</button></div>
+    <div class="card"><h3>Actions</h3><button onclick="fetch('/tech/reset',{method:'POST'})">Factory Reset</button></div>
+    <script>
+    function upload(){
+        var f=document.getElementById('fw').files[0];
+        if(!f)return;
+        var h=new XMLHttpRequest();
+        h.open("POST","/tech/update");
+        h.send(f);
+        h.onload=()=>alert(h.responseText);
+    }
+    </script></body></html>"""
+    client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
+
+def handle_screen_api(client, req_str):
+    try:
+        # Find body
+        parts = req_str.split("\r\n\r\n", 1)
+        if len(parts) > 1:
+            body_str = parts[1]
+            import json
+            body = json.loads(body_str)
+            
+            cmd = body.get("cmd", "")
+            if cmd == "text":
+                x = body.get("x", 0)
+                y = body.get("y", 0)
+                msg = body.get("msg", "")
+                handle_command(f"DISP:TEXT:{x}:{y}:{msg}")
+            elif cmd == "clear":
+                handle_command("DISP:CLEAR")
+                
+            client.send('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"status":"ok"}')
+        else:
+            client.send("HTTP/1.1 400 Bad Request\r\n\r\n")
+    except Exception as e:
+        print(f"WEB: API Error {e}")
+        client.send("HTTP/1.1 500 Error\r\n\r\n")
+
+def handle_legacy_cmd(path):
+    # /?cmd=mode&val=PARTY
+    try:
+        global current_mode
+        qs = path.split("?")[1]
+        pairs = qs.split("&")
+        params = {}
+        for p in pairs:
+            k, v = p.split("=")
+            params[k] = v
+        
+        if "mode" in params:
+            new_mode = params["mode"]
+            if new_mode in MODES:
+                current_mode = new_mode
+                print(f"WEB: Mode changed to {new_mode}")
+    except Exception:
+        pass
+
+def serve_user_dashboard(client):
+    # Provisioning UI or Normal UI depending on mode
+    is_ap = not wifi_sta.isconnected()
+    
+    if is_ap:
+        # Provisioning UI
+        html = """<!DOCTYPE html><html><head><title>Setup WiFi</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#fff;color:#333;font-family:sans-serif;padding:20px;text-align:center}input{display:block;width:90%;margin:10px auto;padding:10px;border:1px solid #ccc}button{background:#007bff;color:#fff;padding:12px 30px;border:none;border-radius:5px;font-size:16px}</style></head>
+        <body><h1>Connect Device</h1><p>Enter your WiFi credentials</p>
+        <input id="ssid" placeholder="WiFi Name (SSID)">
+        <input id="pass" type="password" placeholder="Password">
+        <button onclick="save()">Connect</button>
+        <script>function save(){fetch('/api/wifi',{method:'POST',body:JSON.stringify({ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value})}).then(r=>alert('Saved. Device will reboot.'))}</script></body></html>"""
+    else:
+        # Normal User UI
+        html = f"""<!DOCTYPE html><html><head><title>{WEB_TITLE}</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{{background:#111;color:#eee;font-family:sans-serif;text-align:center;padding:20px}}.mode-btn{{display:block;width:100%;padding:15px;margin:10px 0;background:#333;color:#fff;text-decoration:none;border-radius:8px}}</style></head>
+        <body><h1>{WEB_TITLE}</h1><h3>Current Mode: {current_mode}</h3>
+        <a href="/?cmd=mode&val=AMBIENT" class="mode-btn">AMBIENT</a>
+        <a href="/?cmd=mode&val=PARTY" class="mode-btn">PARTY</a>
+        <a href="/?cmd=mode&val=SIGNAGE" class="mode-btn">SIGNAGE</a>
+        <br><a href="/tech" style="color:#555;font-size:12px">Technician Access</a></body></html>"""
+
+    client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
+
+
+# ============ SERIAL ============
+def read_input():
+    if HAS_POLL and spoll.poll(0):
+        return sys.stdin.readline()
+    return None
+
+# ============ COMMAND HANDLER ============
+def handle_command(cmd):
+    global current_mode, boot_mode, boot_script, crash_count, last_crash_reason
+    cmd = cmd.strip()
+    
+    if cmd == "SYS:HELLO":
+        print(f"SYS:HELLO:{DEVICE_TYPE}")
+        print(f"OK:DEVICE={DEVICE_TYPE};FW={FIRMWARE_VERSION};CAPS={','.join(CAPS)}")
+        return True
+    
+    if cmd == "SYS:RESET":
+        print("OK:SYS:RESET")
+        time.sleep(0.1)
+        machine.reset()
+    
+    if cmd == "SYS:INFO":
+        import gc
+        gc.collect()
+        print(f"OK:SYS:INFO:MEM={gc.mem_free()};MODULES={','.join(MODULES)}")
+        return True
+
+    # ============ VARIABLE COMMANDS ============
+    if cmd.startswith("VAR:SET:"):
+        # VAR:SET:KEY:VALUE
+        parts = cmd.split(":")
+        if len(parts) >= 4:
+            key = parts[2]
+            val_str = parts[3]
+            try:
+                # Try converting to float/int
+                if "." in val_str:
+                    val = float(val_str)
+                else:
+                    val = int(val_str)
+            except Exception:
+                val = val_str
+            SHARED_DATA[key] = val
+            print(f"OK:VAR:SET:{key}:{val}")
+            return True
+
+    if cmd == "VAR:LIST":
+        # Print all vars
+        print("OK:VAR:LIST:" + ",".join([f"{k}={v}" for k, v in SHARED_DATA.items()]))
+        return True
+
+    # ============ TELEMETRY COMMANDS ============
+    if cmd == "STATS:FPS":
+        actual_fps = 1.0 / loop_delay if loop_delay > 0 else 0
+        print(f"OK:STATS:FPS:{actual_fps:.1f}")
+        return True
+    
+    if cmd == "STATS:CPU":
+        # CPU estimation based on loop time (higher time = higher load)
+        import gc
+        gc.collect()
+        cpu_estimate = min(100, int(loop_time * 1000))  # ms to percentage
+        print(f"OK:STATS:CPU:{cpu_estimate}")
+        return True
+    
+    if cmd == "STATS:MEM":
+        import gc
+        gc.collect()
+        mem_free = gc.mem_free()
+        mem_alloc = gc.mem_alloc()
+        mem_total = mem_free + mem_alloc
+        pct_free = int(mem_free * 100 / mem_total) if mem_total > 0 else 0
+        print(f"OK:STATS:MEM:FREE={mem_free};ALLOC={mem_alloc};TOTAL={mem_total};PCT={pct_free}")
+        return True
+    
+    if cmd == "STATS:TEMP":
+        try:
+            import esp32
+            temp = esp32.raw_temperature()  # In Fahrenheit
+            temp_c = (temp - 32) * 5 / 9
+            print(f"OK:STATS:TEMP:{temp_c:.1f}C")
+        except Exception:
+            print("OK:STATS:TEMP:N/A")
+        return True
+    
+    if cmd == "STATS:ALL":
+        import gc
+        gc.collect()
+        actual_fps = 1.0 / loop_delay if loop_delay > 0 else 0
+        mem_free = gc.mem_free()
+        cpu_estimate = min(100, int(loop_time * 1000))
+        try:
+            import esp32
+            temp = (esp32.raw_temperature() - 32) * 5 / 9
+            temp_str = f"{temp:.1f}C"
+        except Exception:
+            temp_str = "N/A"
+        print(f"OK:STATS:ALL:FPS={actual_fps:.1f};CPU={cpu_estimate};MEM={mem_free};TEMP={temp_str}")
+        return True
+
+    # ============ WATCHDOG COMMANDS ============
+    if cmd == "WATCHDOG:FEED":
+        watchdog_feed()
+        print("OK:WATCHDOG:FED")
+        return True
+    
+    if cmd == "WATCHDOG:STATUS":
+        elapsed = time.ticks_diff(time.ticks_ms(), watchdog_last)
+        remaining = max(0, WATCHDOG_TIMEOUT - elapsed)
+        print(f"OK:WATCHDOG:STATUS:ELAPSED={elapsed};TIMEOUT={WATCHDOG_TIMEOUT};REMAINING={remaining}")
+        return True
+    
+    if cmd == "CRASH:LAST":
+        print(f"OK:CRASH:LAST:{last_crash_reason or 'NONE'}")
+        return True
+    
+    if cmd == "CRASH:COUNT":
+        print(f"OK:CRASH:COUNT:{crash_count}")
+        return True
+    
+    if cmd == "CRASH:RESET":
+        # global crash_count, last_crash_reason
+        crash_count = 0
+        last_crash_reason = ""
+        # Also clear crash log
+        try:
+            import os
+            os.remove("crash.log")
+        except Exception:
+            pass
+        print("OK:CRASH:RESET")
+        return True
+    
+    if cmd == "CRASH:LOG":
+        try:
+            with open("crash.log", "r") as f:
+                for line in f:
+                    print(f"CRASH:LOG:{line.strip()}")
+            print("OK:CRASH:LOG:END")
+        except Exception:
+            print("OK:CRASH:LOG:EMPTY")
+        return True
+    if cmd == "MODE:GET":
+        cfg = MODE_CONFIG[current_mode]
+        print(f"OK:MODE:{current_mode}:FPS={cfg['fps']};BRIGHT={cfg['brightness']}")
+        return True
+    
+    if cmd == "MODE:LIST":
+        print(f"OK:MODE:LIST:{','.join(MODES)}")
+        return True
+    
+    if cmd.startswith("MODE:SET:"):
+        mode = cmd.split(":")[-1].upper()
+        if apply_mode(mode):
+            save_state()
+        else:
+            print(f"ERR:MODE:INVALID:{mode}")
+        return True
+
+    # Boot Profile Commands
+    if cmd == "BOOT:GET":
+        print(f"OK:BOOT:{boot_mode}")
+        return True
+    
+    if cmd == "BOOT:LIST":
+        print(f"OK:BOOT:LIST:{','.join(BOOT_MODES)}")
+        return True
+    
+    if cmd.startswith("BOOT:SET:"):
+        mode = cmd.split(":")[-1].upper()
+        if mode in BOOT_MODES:
+            boot_mode = mode
+            save_state()
+            print(f"OK:BOOT:{boot_mode}")
+        else:
+            print(f"ERR:BOOT:INVALID:{mode}")
+        return True
+    
+    if cmd.startswith("BOOT:SCRIPT:ADD:"):
+        script_cmd = cmd[16:]
+        boot_script.append(script_cmd)
+        save_state()
+        print(f"OK:BOOT:SCRIPT:ADD:{len(boot_script)}")
+        return True
+    
+    if cmd == "BOOT:SCRIPT:CLEAR":
+        boot_script = []
+        save_state()
+        print("OK:BOOT:SCRIPT:CLEAR")
+        return True
+    
+    if cmd == "BOOT:SCRIPT:LIST":
+        for i, s in enumerate(boot_script):
+            print(f"BOOT:SCRIPT:{i}:{s}")
+        print(f"OK:BOOT:SCRIPT:COUNT:{len(boot_script)}")
+        return True
+    
+    if cmd == "STATE:SAVE":
+        save_state()
+        return True
+    
+    if cmd == "STATE:LOAD":
+        if load_state():
+            apply_mode(current_mode)
+            print("OK:STATE:LOADED")
+        else:
+            print("ERR:STATE:LOADED:FAILED")
+        return True
+
+    if cmd.startswith("WIFI:CONNECT:"):
+        try:
+            parts = cmd.split(":")
+            ssid = parts[2]
+            password = parts[3] if len(parts) > 3 else ""
+            
+            wifi_sta.active(True)
+            wifi_sta.connect(ssid, password)
+            wifi_manual_connect = True
+            
+            print(f"OK:WIFI:CONNECTING:{ssid}")
+            return True
+        except Exception as e:
+            print(f"ERR:WIFI:CONNECT:{e}")
+            return True
+
+    if cmd.startswith("WIFI:AP:"):
+        try:
+            parts = cmd.split(":")
+            ssid = parts[2]
+            password = parts[3] if len(parts) > 3 else ""
+            
+            wifi_ap.active(True)
+            if password:
+                wifi_ap.config(essid=ssid, password=password, authmode=3)
+            else:
+                wifi_ap.config(essid=ssid, authmode=0)
+            
+            print(f"OK:WIFI:AP:CREATED:{ssid}:{wifi_ap.ifconfig()[0]}")
+            setup_servers(wifi_ap.ifconfig()[0])
+            return True
+        except Exception as e:
+            print(f"ERR:WIFI:AP:{e}")
+            return True
+
+    if cmd == "WIFI:STATUS":
+        status = "DISCONNECTED"
+        ip = "0.0.0.0"
+        if wifi_sta.isconnected():
+            status = "CONNECTED"
+            ip = wifi_sta.ifconfig()[0]
+            if not ws_server:
+                setup_servers(ip)
+        elif wifi_ap.active():
+            status = "AP_MODE"
+            ip = wifi_ap.ifconfig()[0]
+        
+        rssi = wifi_sta.status('rssi') if wifi_sta.isconnected() else 0
+        print(f"OK:WIFI:STATUS:{status}:{ip}:{rssi}")
+        return True
+
+    if cmd.startswith("WIFI:MDNS:"):
+        global HOSTNAME
+        HOSTNAME = cmd.split(":")[2]
+        print(f"OK:WIFI:MDNS:{HOSTNAME}")
+        return True
+
+    if cmd == "WIFI:SCAN":
+        try:
+            wifi_sta.active(True)
+            nets = wifi_sta.scan()
+            results = []
+            for n in nets:
+                ssid = n[0].decode('utf-8')
+                if ssid:
+                    results.append(f"{ssid},{n[3]}")
+            
+            print(f"OK:WIFI:SCAN:{';'.join(results)}")
+            return True
+        except Exception as e:
+            print(f"ERR:WIFI:SCAN:{e}")
+            return True
+
+    if cmd == "MQTT:RECONNECT":
+        setup_mqtt()
+        return True
+
+    if cmd == "LED:Status:ON":
+        led_Status.value(1)
+        print("OK:LED:Status:ON")
+        return True
+    if cmd == "LED:Status:OFF":
+        led_Status.value(0)
+        print("OK:LED:Status:OFF")
+        return True
+    if cmd == "LED:Status:TOGGLE":
+        led_Status.value(1 - led_Status.value())
+        print(f"OK:LED:Status:{led_Status.value()}")
+        return True
+
+    if cmd.startswith("OTA:URL:"):
+        url = cmd.split(":", 2)[2]
+        do_ota_update(url)
+        return True
+
+    if cmd == "WEB:START":
+        setup_web_server()
+        return True
+    if cmd == "WEB:STOP":
+        try:
+            http_socket.close()
+        except Exception: pass
+        print("OK:WEB:STOPPED")
+        return True
+
+    return False
+
+# ============ INIT ============
+print(f"SYS:READY:{DEVICE_TYPE}")
+
+# Load saved state
+if load_state():
+    print(f"SYS:STATE:LOADED:MODE={current_mode}")
+    
+# Apply boot profile
+if boot_mode == "LAST_STATE":
+    apply_mode(current_mode)
+elif boot_mode == "SAFE":
+    apply_mode("POWER_SAVE")
+    print("SYS:BOOT:SAFE_MODE")
+elif boot_mode == "SCRIPT":
+    print(f"SYS:BOOT:SCRIPT:RUNNING:{len(boot_script)} commands")
+    for cmd in boot_script:
+        handle_command(cmd)
+
+
+# Initialize WiFi
+HOSTNAME = "led-device"
+try:
+    if "STA" == "STA":
+        ssid = "MyNet"
+        password = ""
+        if ssid:
+            wifi_sta.active(True)
+            wifi_sta.connect(ssid, password)
+            print(f"SYS:WIFI:CONNECTING:{ssid}")
+    elif "STA" == "AP":
+        ssid = "MyNet"
+        password = ""
+        wifi_ap.active(True)
+        if password:
+            wifi_ap.config(essid=ssid, password=password, authmode=3)
+        else:
+            wifi_ap.config(essid=ssid, authmode=0)
+        print(f"SYS:WIFI:AP_CREATED:{ssid}")
+        setup_servers(wifi_ap.ifconfig()[0])
+except Exception as e:
+    print(f"ERR:WIFI:INIT:{e}")
+
+
+def setup_servers(ip):
+    global ws_server, mdns_sock
+    
+    # WebSocket Server on port 81
+    try:
+        if not ws_server:
+            ws_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ws_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            ws_server.bind(('0.0.0.0', 81))
+            ws_server.listen(4)
+            ws_server.setblocking(False)
+            print("SYS:WS:STARTED:81")
+    except Exception as e:
+        print(f"ERR:WS:START:{e}")
+
+    # mDNS Responder on UDP 5353
+    try:
+        if not mdns_sock:
+            mdns_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            mdns_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            mdns_sock.bind(('0.0.0.0', 5353))
+            mdns_sock.setblocking(False)
+            
+            # Join Multicast Group
+            mreq = struct.pack("4sl", socket.inet_aton("224.0.0.251"), socket.INADDR_ANY)
+            mdns_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            print(f"SYS:MDNS:STARTED:{HOSTNAME}.local")
+    except Exception as e:
+        print(f"ERR:MDNS:START:{e}")
+
+def ws_handshake(client):
+    try:
+        req = client.recv(1024)
+        if not req: return False
+
+        headers = {}
+        for line in req.decode().split("\r\n"):
+            if ": " in line:
+                k, v = line.split(": ", 1)
+                headers[k] = v
+        
+        if "Sec-WebSocket-Key" in headers:
+            key = headers["Sec-WebSocket-Key"]
+            resp_key = binascii.b2a_base64(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode().strip()
+            
+            resp = "HTTP/1.1 101 Switching Protocols\r\n"
+            resp += "Upgrade: websocket\r\n"
+            resp += "Connection: Upgrade\r\n"
+            resp += f"Sec-WebSocket-Accept: {resp_key}\r\n\r\n"
+            
+            client.send(resp.encode())
+            return True
+    except Exception:
+        pass
+    return False
+
+def ws_read_frame(client):
+    try:
+        h = client.recv(2)
+        if not h: return None
+
+        length = h[1] & 127
+        if length == 126:
+            length = struct.unpack(">H", client.recv(2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", client.recv(8))[0]
+        
+        masks = client.recv(4)
+        payload = client.recv(length)
+        
+        decoded = bytearray()
+        for i in range(length):
+            decoded.append(payload[i] ^ masks[i % 4])
+        
+        return decoded.decode()
+    except Exception:
+        return None
+    
+setup_mqtt()
+print("OTA: Ready (CMD: OTA:URL:http://...)")
+setup_web_server()
+
+# ============ MAIN LOOP ============
+loop_delay = 0.016  # Default ~60 FPS
+loop_time = 0.0     # Measured loop execution time (for CPU stats)
+while True:
+    loop_start = time.ticks_ms()
+    
+    cmd = read_input()
+    if cmd:
+        if not handle_command(cmd):
+            print("ERR:UNKNOWN_CMD")
+    
+    # Adjust loop delay based on mode
+    cfg = MODE_CONFIG.get(current_mode, MODE_CONFIG["AMBIENT"])
+    loop_delay = 1.0 / cfg["fps"]
+
+
+    # Manage WiFi State + Auto NTP Sync
+    if wifi_sta.isconnected() and not ws_server:
+        # Sync NTP first (priority!)
+        try:
+            import ntptime
+            print("SYS:NTP:SYNCING...")
+            ntptime.settime()
+            import time
+            now = time.localtime()
+            print(f"SYS:NTP:SYNCED:{now[0]}-{now[1]:02d}-{now[2]:02d} {now[3]:02d}:{now[4]:02d}")
+        except Exception as e:
+            print(f"ERR:NTP:AUTO:{e}")
+        # Then setup servers
+        setup_servers(wifi_sta.ifconfig()[0])
+
+    # WebSocket Accept
+    if ws_server:
+        try:
+            cl, addr = ws_server.accept()
+            # Handshake
+            cl.settimeout(1.0)
+            if ws_handshake(cl):
+                cl.setblocking(False)
+                ws_clients.append(cl)
+                print(f"SYS:WS:CLIENT_CONNECTED:{addr[0]}")
+            else:
+                cl.close()
+        except OSError:
+            pass
+
+    # WebSocket Read
+    for cl in ws_clients[:]:
+        try:
+            msg = ws_read_frame(cl)
+            if msg:
+                handle_command(msg)
+        except Exception:
+            try:
+                ws_clients.remove(cl)
+            except Exception: pass
+    
+    # MQTT Check
+    if time.ticks_ms() % 100 == 0:
+        mqtt_check()
+    # Web Server Poll (HTTP + DNS)
+    if http_poll:
+        res = http_poll.poll(0)
+        for sock, ev in res:
+            if sock == http_socket:
+                client, addr = http_socket.accept()
+                handle_web_request(client)
+            elif sock == dns_socket:
+                handle_dns_request(dns_socket)
+    
+    # Measure loop time for CPU stats
+    loop_time = time.ticks_diff(time.ticks_ms(), loop_start) / 1000.0
+    
+    # Sleep remaining time
+    sleep_time = max(0, loop_delay - loop_time)
+    time.sleep(sleep_time)

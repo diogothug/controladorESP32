@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Report</title>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --green: #3fb950; --red: #f85149; --yellow: #d29922; --blue: #58a6ff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 40px; line-height: 1.5; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { font-weight: 600; font-size: 24px; margin-bottom: 24px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; }
+        .stat-value { font-size: 32px; font-weight: 700; }
+        .stat-value.green { color: var(--green); }
+        .stat-value.red { color: var(--red); }
+        .stat-value.yellow { color: var(--yellow); }
+        .stat-label { font-size: 14px; color: #8b949e; margin-top: 4px; }
+        .test-list { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .test { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+        .test:last-child { border-bottom: none; }
+        .test-icon { width: 8px; height: 8px; border-radius: 50%; }
+        .test-icon.pass { background: var(--green); }
+        .test-icon.fail { background: var(--red); }
+        .test-icon.skip { background: var(--yellow); }
+        .test-name { flex: 1; font-size: 14px; }
+        .test-duration { font-size: 13px; color: #8b949e; }
+        .test-error { background: rgba(248, 81, 73, 0.1); padding: 12px 20px; font-family: 'SF Mono', monospace; font-size: 13px; color: var(--red); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Report</h1>
+        <div class="stats">
+            <div class="stat"><div class="stat-value green">31</div><div class="stat-label">Passed</div></div>
+            <div class="stat"><div class="stat-value red">0</div><div class="stat-label">Failed</div></div>
+            <div class="stat"><div class="stat-value yellow">0</div><div class="stat-label">Skipped</div></div>
+            <div class="stat"><div class="stat-value">187ms</div><div class="stat-label">Duration</div></div>
+        </div>
+        <div class="test-list">
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate basic firmware structure with no modules</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should include WiFi snippet when WIFI module is present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should include MQTT logic when MQTT module is present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should include OTA logic when OTA module is present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should include UDP logic when UDP module is present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should include Web Server logic when Web Server module is present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should handle LED modules correctly</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should match golden snapshot</span>
+                    <span class="test-duration">3ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should have valid Python syntax</span>
+                    <span class="test-duration">167ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">User creates a LED tide panel in 3 clicks -> firmware boots with Tide and NeoPixel support</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">Snapshot of Intent: Validates semantic universe of Tide+LED firmware</span>
+                    <span class="test-duration">2ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">test_regression_2024_neo_freeze_on_boot: Watchdog must be active to prevent NeoPixel lockups</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">System must fail with dignity: Incomplete config produces safe fallback code</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">Firmware generation must feel instant (<300ms)</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">Logs must be human readable and present</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should respect Intent Boot Animation over Module Default</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should fallback to Module Default if Intent Boot Animation is missing</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate NVS logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate ESP-NOW logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate BLE logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate Display logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate MQTT logic with Discovery</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate OTA logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate UDP Sync logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate Web API /api/screen logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate LDR Auto-Brightness logic</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should inject Auto-Brightness check in NeoPixel loop</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should support Multi-Strip (Multiple NeoPixel Modules)</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate Automation module structure</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should inject dispatch_event into Input Modules</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should inject dispatch_event into Base Template</span>
+                    <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+        </div>
+    </div>
+</body>
+</html>

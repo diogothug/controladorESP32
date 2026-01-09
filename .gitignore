@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+*.exe
+*.zip
+
+# Binary files
+*.bin
+*.dll
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs
+test_output.txt
+tsc-error.txt
+
+# Tools (download at runtime)
+app/tools/arduino-cli/
+app/tools/*.exe
