@@ -19,6 +19,7 @@ import './units/firmware-polish.test';
 import './units/firmware-automation.test';
 import './units/firmware-mock.test';
 import './units/tide-visuals.test';
+import './units/tide-module.test';
 
 // Parse CLI args and run
 const options = parseCliArgs();

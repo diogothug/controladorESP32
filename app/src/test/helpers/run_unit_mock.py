@@ -41,6 +41,13 @@ sys.modules['utime'] = standard_time
 # Import hardware mocks
 import machine
 import network
+import urequests
+import neopixel
+import dht
+
+# Make json available (standard library)
+import json
+sys.modules['ujson'] = json
 
 def verify_firmware(firmware_path):
     print(f"TEST: Loading {firmware_path}")

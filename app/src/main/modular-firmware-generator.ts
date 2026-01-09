@@ -1801,12 +1801,9 @@ function generateTideSnippet(config: ModuleConfig): ModuleSnippet {
     const harborId = tideConfig.harborId;
     const updateInterval = tideConfig.updateInterval * 60; // Convert to seconds
 
-
-
     return {
         imports: `import urequests
-import json
-import time`,
+import json`,
         globals: `# Premium Tide Logic Configuration
 TIDE_HARBOR_ID = ${harborId}
 TIDE_UPDATE_INTERVAL = ${updateInterval}
@@ -1819,262 +1816,193 @@ tide_direction = "rising"  # "rising", "falling", or "stable"
 tide_last_update = 0
 tide_next_change = ""
 
-def lerp_color(c1, c2, t):
-"""Interpolate between two RGB colors"""
-t = max(0, min(1, t))
-return (
-    int(c1[0] + (c2[0] - c1[0]) * t),
-    int(c1[1] + (c2[1] - c1[1]) * t),
-    int(c1[2] + (c2[2] - c1[2]) * t)
-)
+def tide_lerp_color(c1, c2, t):
+    """Interpolate between two RGB colors"""
+    t = max(0, min(1, t))
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t)
+    )
 
-def apply_brightness(color, factor):
-"""Apply brightness factor with clamping"""
-return (
-    min(255, max(0, int(color[0] * factor))),
-    min(255, max(0, int(color[1] * factor))),
-    min(255, max(0, int(color[2] * factor)))
-)
+def tide_apply_brightness(color, factor):
+    """Apply brightness factor with clamping"""
+    return (
+        min(255, max(0, int(color[0] * factor))),
+        min(255, max(0, int(color[1] * factor))),
+        min(255, max(0, int(color[2] * factor)))
+    )
 
-def get_depth_color(level, row, max_row):
-"""Get color based on tide level and vertical depth"""
+def get_tide_depth_color(level, row, max_row):
+    """Get color based on tide level and vertical depth"""
+    # Tide color palette
+    TIDE_DEEP = (5, 15, 40)
+    TIDE_LOW = (0, 40, 60)
+    TIDE_MID = (0, 80, 120)
+    TIDE_HIGH = (40, 140, 180)
+    TIDE_PREAMAR = (80, 180, 200)
+    
     # Base color based on overall tide level
-if level >= 95:
-    base = TIDE_COLOR_PREAMAR
+    if level >= 95:
+        base = TIDE_PREAMAR
     elif level >= 70:
-base = lerp_color(TIDE_COLOR_HIGH, TIDE_COLOR_PREAMAR, (level - 70) / 25)
+        base = tide_lerp_color(TIDE_HIGH, TIDE_PREAMAR, (level - 70) / 25)
     elif level >= 40:
-base = lerp_color(TIDE_COLOR_MID, TIDE_COLOR_HIGH, (level - 40) / 30)
+        base = tide_lerp_color(TIDE_MID, TIDE_HIGH, (level - 40) / 30)
     elif level >= 15:
-base = lerp_color(TIDE_COLOR_LOW, TIDE_COLOR_MID, (level - 15) / 25)
+        base = tide_lerp_color(TIDE_LOW, TIDE_MID, (level - 15) / 25)
     else:
-base = lerp_color(TIDE_COLOR_DEEP, TIDE_COLOR_LOW, level / 15)
+        base = tide_lerp_color(TIDE_DEEP, TIDE_LOW, level / 15)
     
     # Apply depth gradient: bottom darker, top lighter
-depth_factor = 0.5 + 0.5 * (row / max(1, max_row - 1))
-return apply_brightness(base, depth_factor)
+    depth_factor = 0.5 + 0.5 * (row / max(1, max_row - 1))
+    return tide_apply_brightness(base, depth_factor)
 
 def set_tide_enabled(val):
-global tide_enabled
-tide_enabled = val
+    global tide_enabled
+    tide_enabled = val
     SHARED_DATA["TIDE_ENABLED"] = val
 
 def set_tide_level(val_str):
-global tide_level
-try:
-    tide_level = int(val_str)
-    SHARED_DATA["TIDE"] = tide_level
-    print(f"OK:TIDE:LEVEL:{tide_level}")
-except Exception:
-print("ERR:TIDE:LEVEL:INVALID")
+    global tide_level
+    try:
+        tide_level = int(val_str)
+        SHARED_DATA["TIDE"] = tide_level
+        print(f"OK:TIDE:LEVEL:{tide_level}")
+    except Exception:
+        print("ERR:TIDE:LEVEL:INVALID")
 
 def set_tide_direction(val_str):
-global tide_direction
-d = val_str.lower()
+    global tide_direction
+    d = val_str.lower()
     if d in ("rising", "falling", "stable"):
         tide_direction = d
         SHARED_DATA["TIDE_DIR"] = tide_direction
         print(f"OK:TIDE:DIR:{tide_direction}")
     else:
-print("ERR:TIDE:DIR:INVALID")
+        print("ERR:TIDE:DIR:INVALID")
 
-def parse_time(t_str):
-"""Parse HH:MM string to minutes since midnight"""
-try:
-h, m = t_str.split(":")
-return int(h) * 60 + int(m)
-except Exception:
-return 0
+def tide_parse_time(t_str):
+    """Parse HH:MM string to minutes since midnight"""
+    try:
+        h, m = t_str.split(":")
+        return int(h) * 60 + int(m)
+    except Exception:
+        return 0
 
 def fetch_tide_data():
-global tide_level, tide_direction, tide_next_change, tide_last_update
-try:
-import time
+    global tide_level, tide_direction, tide_next_change, tide_last_update
+    try:
         now = time.localtime()
-month = now[1]
-day = now[2]
-current_mins = now[3] * 60 + now[4]
-
-url = f"{TIDE_API_BASE}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
-response = urequests.get(url)
-data = json.loads(response.text)
-response.close()
+        month = now[1]
+        day = now[2]
+        current_mins = now[3] * 60 + now[4]
+        
+        url = f"{TIDE_API_BASE}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
+        response = urequests.get(url)
+        data = json.loads(response.text)
+        response.close()
         
         # Parse nested structure: data[0].months[0].days[0].hours[]
-if data.get("data") and len(data["data"]) > 0:
-harbor_data = data["data"][0]
-months = harbor_data.get("months", [])
-if months and len(months) > 0:
-days = months[0].get("days", [])
-if days and len(days) > 0:
-hours = days[0].get("hours", [])
+        if data.get("data") and len(data["data"]) > 0:
+            harbor_data = data["data"][0]
+            months = harbor_data.get("months", [])
+            if months and len(months) > 0:
+                days = months[0].get("days", [])
+                if days and len(days) > 0:
+                    hours = days[0].get("hours", [])
                     
                     # Sort by time
-hours.sort(key = lambda e: parse_time(e.get("hour", "00:00:00")[: 5]))
-
-prev_entry = None
-next_entry = None
-
-for entry in hours:
-    hour_str = entry.get("hour", "00:00:00")[: 5]  # "HH:MM:SS" -> "HH:MM"
-entry_time = parse_time(hour_str)
-if entry_time <= current_mins:
-    prev_entry = entry
+                    hours.sort(key=lambda e: tide_parse_time(e.get("hour", "00:00:00")[:5]))
+                    
+                    prev_entry = None
+                    next_entry = None
+                    
+                    for entry in hours:
+                        hour_str = entry.get("hour", "00:00:00")[:5]
+                        entry_time = tide_parse_time(hour_str)
+                        if entry_time <= current_mins:
+                            prev_entry = entry
                         elif next_entry is None:
-next_entry = entry
-
-if prev_entry and next_entry:
-prev_time = parse_time(prev_entry.get("hour", "00:00:00")[: 5])
-next_time = parse_time(next_entry.get("hour", "00:00:00")[: 5])
-prev_height = float(prev_entry.get("level", 1))
-next_height = float(next_entry.get("level", 1))
-
-if next_time > prev_time:
-    progress = (current_mins - prev_time) / (next_time - prev_time)
-    current_height = prev_height + (next_height - prev_height) * progress
-    mean_level = harbor_data.get("mean_level", 1.1)
-    tide_level = min(100, max(0, int(current_height / (mean_level * 2) * 100)))
-    SHARED_DATA["TIDE"] = tide_level
-
-diff = next_height - prev_height
-    if abs(diff) < 0.1:
-        tide_direction = "stable"
-    elif diff > 0:
-        tide_direction = "rising"
-    else:
-        tide_direction = "falling"
-    SHARED_DATA["TIDE_DIR"] = tide_direction
-
-tide_next_change = next_entry.get("hour", "")[: 5]
+                            next_entry = entry
+                    
+                    if prev_entry and next_entry:
+                        prev_time = tide_parse_time(prev_entry.get("hour", "00:00:00")[:5])
+                        next_time = tide_parse_time(next_entry.get("hour", "00:00:00")[:5])
+                        prev_height = float(prev_entry.get("level", 1))
+                        next_height = float(next_entry.get("level", 1))
+                        
+                        if next_time > prev_time:
+                            progress = (current_mins - prev_time) / (next_time - prev_time)
+                            current_height = prev_height + (next_height - prev_height) * progress
+                            mean_level = harbor_data.get("mean_level", 1.1)
+                            tide_level = min(100, max(0, int(current_height / (mean_level * 2) * 100)))
+                            SHARED_DATA["TIDE"] = tide_level
+                        
+                        diff = next_height - prev_height
+                        if abs(diff) < 0.1:
+                            tide_direction = "stable"
+                        elif diff > 0:
+                            tide_direction = "rising"
+                        else:
+                            tide_direction = "falling"
+                        SHARED_DATA["TIDE_DIR"] = tide_direction
+                        
+                        tide_next_change = next_entry.get("hour", "")[:5]
+                    
                     elif prev_entry and not next_entry:
-                        # After last entry of day - extrapolate direction
-prev_height = float(prev_entry.get("level", 1))
-    mean_level = harbor_data.get("mean_level", 1.1)
-    tide_level = min(100, max(0, int(prev_height / (mean_level * 2) * 100)))
-    SHARED_DATA["TIDE"] = tide_level
+                        # After last entry of day
+                        prev_height = float(prev_entry.get("level", 1))
+                        mean_level = harbor_data.get("mean_level", 1.1)
+                        tide_level = min(100, max(0, int(prev_height / (mean_level * 2) * 100)))
+                        SHARED_DATA["TIDE"] = tide_level
                         
-                        # Check if prev was high or low to determine direction
-    if prev_height > mean_level:
-        tide_direction = "falling"  # After high tide, going down
-    else:
-        tide_direction = "rising"   # After low tide, going up
-    SHARED_DATA["TIDE_DIR"] = tide_direction
+                        if prev_height > mean_level:
+                            tide_direction = "falling"
+                        else:
+                            tide_direction = "rising"
+                        SHARED_DATA["TIDE_DIR"] = tide_direction
                         
-                        # Next change is first entry of tomorrow(wrap around)
-    if hours:
-        tide_next_change = hours[0].get("hour", "")[: 5]+ " (tomorrow)"
-    
-    SHARED_DATA["TIDE_NEXT"] = tide_next_change
-
-tide_last_update = time.time()
-print(f"OK:TIDE:SYNC:level={tide_level},dir={tide_direction}")
+                        if hours:
+                            tide_next_change = hours[0].get("hour", "")[:5] + " (tomorrow)"
+                    
+                    SHARED_DATA["TIDE_NEXT"] = tide_next_change
+        
+        tide_last_update = time.time()
+        print(f"OK:TIDE:SYNC:level={tide_level},dir={tide_direction}")
     except Exception as e:
-print(f"ERR:TIDE:FETCH:{e}")
-
+        print(f"ERR:TIDE:FETCH:{e}")
 `,
         commands: `    if cmd == "TIDE:SYNC":
-    fetch_tide_data()
-return True
-if cmd == "TIDE:STATUS":
-    print(f"OK:TIDE:STATUS:level={tide_level},dir={tide_direction},next={tide_next_change}")
-return True
-if cmd == "TIDE:DEBUG":
-    import time
-        print("=== TIDE DEBUG INFO ===")
-print(f"Level: {tide_level}%")
-print(f"Direction: {tide_direction}")
-print(f"Next change: {tide_next_change}")
-print(f"Harbor ID: {TIDE_HARBOR_ID}")
-print(f"Matrix: {TIDE_MATRIX_W}x{TIDE_MATRIX_H} = {TIDE_LED_COUNT} LEDs")
-print(f"Last update: {int(time.time() - tide_last_update)}s ago")
-print(f"Update interval: {TIDE_UPDATE_INTERVAL}s")
-print(f"Enabled: {tide_enabled}")
-if wifi_sta:
-    print(f"WiFi connected: {wifi_sta.isconnected()}")
-if wifi_sta.isconnected():
-    print(f"IP: {wifi_sta.ifconfig()[0]}")
-print("======================")
-return True
-if cmd == "TIDE:TEST":
-    import time
-        print("=== TIDE API TEST ===")
-try:
-now = time.localtime()
-year = now[0]
-month = now[1]
-day = now[2]
-hour = now[3]
-minute = now[4]
-print(f"ESP32 DateTime: {year}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}")
-if year < 2024:
-    print("WARNING: Date seems wrong! NTP may not be synced.")
-print("WiFi must connect first for NTP sync.")
-url = f"{TIDE_API_BASE}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
-print(f"URL: {url}")
-print("Fetching...")
-response = urequests.get(url)
-raw = response.text
-response.close()
-print(f"Response length: {len(raw)}")
-data = json.loads(raw)
-if data.get("data") and len(data["data"]) > 0:
-harbor = data["data"][0]
-print(f"Harbor: {harbor.get('harbor_name', 'Unknown')}")
-print(f"Mean level: {harbor.get('mean_level', 'N/A')}m")
-months = harbor.get("months", [])
-if months:
-    days = months[0].get("days", [])
-if days:
-    hours = days[0].get("hours", [])
-print(f"Found {len(hours)} tide entries:")
-for h in hours:
-    hora = h.get("hour", "??")[: 5]
-nivel = h.get("level", "?")
-print(f"  {hora} - {nivel}m")
-                    else:
-print("No days data")
-                else:
-print("No months data")
-            else:
-print(f"No data in response")
-print(f"Raw: {raw[:300]}")
-        except Exception as e:
-print(f"ERR: {e}")
-print("===================")
-return True
-if cmd == "TIDE:NTP":
-    try:
-import ntptime
-            print("Syncing NTP...")
-ntptime.settime()
-import time
-            now = time.localtime()
-print(f"OK:NTP:SYNCED:{now[0]}-{now[1]:02d}-{now[2]:02d} {now[3]:02d}:{now[4]:02d}")
-        except Exception as e:
-print(f"ERR:NTP:{e}")
-return True
-if cmd == "TIDE:SHOW":
-    set_tide_enabled(True)
-print("OK:TIDE:SHOW")
-return True
+        fetch_tide_data()
+        return True
+    if cmd == "TIDE:STATUS":
+        print(f"OK:TIDE:STATUS:level={tide_level},dir={tide_direction},next={tide_next_change}")
+        return True
+    if cmd == "TIDE:FETCH":
+        fetch_tide_data()
+        return True
+    if cmd == "TIDE:SHOW":
+        set_tide_enabled(True)
+        print("OK:TIDE:SHOW")
+        return True
     if cmd == "TIDE:HIDE":
         set_tide_enabled(False)
         print("OK:TIDE:HIDE")
         return True
-if cmd.startswith("TIDE:LEVEL:"):
-    set_tide_level(cmd.split(":")[2])
-return True
-if cmd.startswith("TIDE:DIR:"):
-    set_tide_direction(cmd.split(":")[2])
-return True`,
-        init: `# Initialize tide logic
+    if cmd.startswith("TIDE:LEVEL:"):
+        set_tide_level(cmd.split(":")[2])
+        return True
+    if cmd.startswith("TIDE:DIR:"):
+        set_tide_direction(cmd.split(":")[2])
+        return True`,
+        init: `    # Initialize tide logic
     print("TIDE: Logic ready")
-    # Initial status update to shared data
     SHARED_DATA["TIDE"] = tide_level
     SHARED_DATA["TIDE_DIR"] = tide_direction`,
-        loop: `# Premium Tide Logic update
+        loop: `    # Premium Tide Logic update
     if time.time() - tide_last_update > TIDE_UPDATE_INTERVAL:
-        if wifi_sta and wifi_sta.isconnected():
+        if 'wifi_sta' in dir() and wifi_sta and wifi_sta.isconnected():
             fetch_tide_data()`,
         caps: ['TIDE']
     };
