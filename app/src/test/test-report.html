@@ -33,10 +33,10 @@
     <div class="container">
         <h1>Test Report</h1>
         <div class="stats">
-            <div class="stat"><div class="stat-value green">31</div><div class="stat-label">Passed</div></div>
-            <div class="stat"><div class="stat-value red">0</div><div class="stat-label">Failed</div></div>
+            <div class="stat"><div class="stat-value green">32</div><div class="stat-label">Passed</div></div>
+            <div class="stat"><div class="stat-value red">1</div><div class="stat-label">Failed</div></div>
             <div class="stat"><div class="stat-value yellow">0</div><div class="stat-label">Skipped</div></div>
-            <div class="stat"><div class="stat-value">187ms</div><div class="stat-label">Duration</div></div>
+            <div class="stat"><div class="stat-value">349ms</div><div class="stat-label">Duration</div></div>
         </div>
         <div class="test-list">
             
@@ -90,16 +90,18 @@
                 
             
                 <div class="test">
-                    <div class="test-icon pass"></div>
+                    <div class="test-icon fail"></div>
                     <span class="test-name">should match golden snapshot</span>
-                    <span class="test-duration">3ms</span>
+                    <span class="test-duration"><1ms</span>
                 </div>
-                
+                <div class="test-error">Snapshot mismatch: full_firmware_golden
+  Expected: 40675 chars
+  Received: 40916 chars</div>
             
                 <div class="test">
                     <div class="test-icon pass"></div>
-                    <span class="test-name">should have valid Python syntax</span>
-                    <span class="test-duration">167ms</span>
+                    <span class="test-name">should pass advanced static analysis (Linting + AST)</span>
+                    <span class="test-duration">76ms</span>
                 </div>
                 
             
@@ -113,7 +115,7 @@
                 <div class="test">
                     <div class="test-icon pass"></div>
                     <span class="test-name">Snapshot of Intent: Validates semantic universe of Tide+LED firmware</span>
-                    <span class="test-duration">2ms</span>
+                    <span class="test-duration"><1ms</span>
                 </div>
                 
             
@@ -254,6 +256,20 @@
                     <div class="test-icon pass"></div>
                     <span class="test-name">should inject dispatch_event into Base Template</span>
                     <span class="test-duration"><1ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should run generated firmware on Python 3 with Mocks</span>
+                    <span class="test-duration">140ms</span>
+                </div>
+                
+            
+                <div class="test">
+                    <div class="test-icon pass"></div>
+                    <span class="test-name">should generate and run TIDE presets (SIMPLE, WAVE, AURORA)</span>
+                    <span class="test-duration">118ms</span>
                 </div>
                 
             

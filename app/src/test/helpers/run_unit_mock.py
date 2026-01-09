@@ -1,16 +1,44 @@
 
 import sys
 import os
+import time as standard_time
 
 # Add mocks to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 mocks_dir = os.path.join(current_dir, '../mocks')
 sys.path.insert(0, mocks_dir)
 
-# Force load our mock time (std python time is built-in)
-if 'time' in sys.modules:
-    del sys.modules['time']
-import time
+# Patch the standard time module with MicroPython-specific functions
+def ticks_ms():
+    return int(standard_time.time() * 1000) % (2**30)
+
+def ticks_us():
+    return int(standard_time.time() * 1000000) % (2**30)
+
+def ticks_diff(end, start):
+    return (end - start) % (2**30)
+
+def ticks_add(ticks, delta):
+    return (ticks + delta) % (2**30)
+
+def sleep_ms(ms):
+    standard_time.sleep(ms / 1000.0)
+
+def sleep_us(us):
+    standard_time.sleep(us / 1000000.0)
+
+# Inject into the time module (already loaded as standard_time)
+standard_time.ticks_ms = ticks_ms
+standard_time.ticks_us = ticks_us
+standard_time.ticks_diff = ticks_diff
+standard_time.ticks_add = ticks_add
+standard_time.sleep_ms = sleep_ms
+standard_time.sleep_us = sleep_us
+
+# Also make utime an alias
+sys.modules['utime'] = standard_time
+
+# Import hardware mocks
 import machine
 import network
 

@@ -903,6 +903,15 @@ def handle_command(cmd):
             print(f"ERR:MODE:INVALID:{mode}")
         return True
 
+    if cmd.startswith("BRIGHT:"):
+        try:
+            val = int(cmd.split(":")[1])
+            SHARED_DATA['BRIGHTNESS'] = val
+            print(f"OK:GLOBAL:BRIGHT:{val}")
+        except Exception:
+            pass
+        return True
+
     # Boot Profile Commands
     if cmd == "BOOT:GET":
         print(f"OK:BOOT:{boot_mode}")
