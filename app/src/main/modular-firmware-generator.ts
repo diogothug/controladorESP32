@@ -1799,25 +1799,44 @@ function generateTideSnippet(config: ModuleConfig): ModuleSnippet {
     };
 
     const harborId = tideConfig.harborId;
-    const updateInterval = tideConfig.updateInterval * 60; // Convert to seconds
+    const updateInterval = tideConfig.updateInterval * 60;
 
     return {
         imports: `import urequests
-import json`,
-        globals: `# Premium Tide Logic Configuration
+import json
+import math`,
+        globals: `# ============ TIDE INTELLIGENCE SYSTEM ============
+# Apple-style: It just works. Silent fallback, smart cache, learning prediction.
+
+# Configuration
 TIDE_HARBOR_ID = ${harborId}
 TIDE_UPDATE_INTERVAL = ${updateInterval}
-TIDE_API_BASE = "https://tabuamare.devtu.qzz.io/api/v1"
+TIDE_PROACTIVE_SYNC = ${Math.floor(updateInterval * 0.8)}  # Sync before expiry
 
-# Tide state variables
+# API Endpoints (fallback chain)
+TIDE_APIS = [
+    {"name": "API1", "base": "https://tabuamare.devtu.qzz.io/api/v1", "type": "tabuamare"},
+    {"name": "API2", "base": "https://www.worldtides.info/api/v3", "type": "worldtides"},
+]
+
+# Tide Intelligence State
+tide_data = {
+    "level": 50,
+    "direction": "stable",
+    "confidence": 50,
+    "source": "INIT",
+    "next_event": {"type": "unknown", "time": "", "level": 0},
+    "last_high": {"timestamp": 0, "level": 1.5},
+    "last_low": {"timestamp": 0, "level": 0.5},
+    "last_sync": 0,
+    "history": []
+}
+
 tide_enabled = True
-tide_level = 50  # 0 - 100 percentage
-tide_direction = "rising"  # "rising", "falling", or "stable"
-tide_last_update = 0
-tide_next_change = ""
+
+# ============ HELPER FUNCTIONS ============
 
 def tide_lerp_color(c1, c2, t):
-    """Interpolate between two RGB colors"""
     t = max(0, min(1, t))
     return (
         int(c1[0] + (c2[0] - c1[0]) * t),
@@ -1826,7 +1845,6 @@ def tide_lerp_color(c1, c2, t):
     )
 
 def tide_apply_brightness(color, factor):
-    """Apply brightness factor with clamping"""
     return (
         min(255, max(0, int(color[0] * factor))),
         min(255, max(0, int(color[1] * factor))),
@@ -1834,176 +1852,299 @@ def tide_apply_brightness(color, factor):
     )
 
 def get_tide_depth_color(level, row, max_row):
-    """Get color based on tide level and vertical depth"""
-    # Tide color palette
     TIDE_DEEP = (5, 15, 40)
     TIDE_LOW = (0, 40, 60)
     TIDE_MID = (0, 80, 120)
     TIDE_HIGH = (40, 140, 180)
     TIDE_PREAMAR = (80, 180, 200)
     
-    # Base color based on overall tide level
-    if level >= 95:
-        base = TIDE_PREAMAR
-    elif level >= 70:
-        base = tide_lerp_color(TIDE_HIGH, TIDE_PREAMAR, (level - 70) / 25)
-    elif level >= 40:
-        base = tide_lerp_color(TIDE_MID, TIDE_HIGH, (level - 40) / 30)
-    elif level >= 15:
-        base = tide_lerp_color(TIDE_LOW, TIDE_MID, (level - 15) / 25)
-    else:
-        base = tide_lerp_color(TIDE_DEEP, TIDE_LOW, level / 15)
+    if level >= 95: base = TIDE_PREAMAR
+    elif level >= 70: base = tide_lerp_color(TIDE_HIGH, TIDE_PREAMAR, (level - 70) / 25)
+    elif level >= 40: base = tide_lerp_color(TIDE_MID, TIDE_HIGH, (level - 40) / 30)
+    elif level >= 15: base = tide_lerp_color(TIDE_LOW, TIDE_MID, (level - 15) / 25)
+    else: base = tide_lerp_color(TIDE_DEEP, TIDE_LOW, level / 15)
     
-    # Apply depth gradient: bottom darker, top lighter
     depth_factor = 0.5 + 0.5 * (row / max(1, max_row - 1))
     return tide_apply_brightness(base, depth_factor)
 
-def set_tide_enabled(val):
-    global tide_enabled
-    tide_enabled = val
-    SHARED_DATA["TIDE_ENABLED"] = val
-
-def set_tide_level(val_str):
-    global tide_level
-    try:
-        tide_level = int(val_str)
-        SHARED_DATA["TIDE"] = tide_level
-        print(f"OK:TIDE:LEVEL:{tide_level}")
-    except Exception:
-        print("ERR:TIDE:LEVEL:INVALID")
-
-def set_tide_direction(val_str):
-    global tide_direction
-    d = val_str.lower()
-    if d in ("rising", "falling", "stable"):
-        tide_direction = d
-        SHARED_DATA["TIDE_DIR"] = tide_direction
-        print(f"OK:TIDE:DIR:{tide_direction}")
-    else:
-        print("ERR:TIDE:DIR:INVALID")
-
 def tide_parse_time(t_str):
-    """Parse HH:MM string to minutes since midnight"""
     try:
-        h, m = t_str.split(":")
-        return int(h) * 60 + int(m)
-    except Exception:
+        parts = t_str.replace(":", " ").split()
+        return int(parts[0]) * 60 + int(parts[1])
+    except:
         return 0
 
-def fetch_tide_data():
-    global tide_level, tide_direction, tide_next_change, tide_last_update
+# ============ CACHE (NVS) ============
+
+def tide_save_cache():
+    global tide_data
+    try:
+        import nvs
+        nvs.set_str("tide_cache", json.dumps(tide_data))
+        nvs.commit()
+    except:
+        pass
+
+def tide_load_cache():
+    global tide_data
+    try:
+        import nvs
+        cached = nvs.get_str("tide_cache")
+        if cached:
+            loaded = json.loads(cached)
+            tide_data.update(loaded)
+            tide_data["source"] = "CACHE"
+            # Decay confidence based on age
+            age_hours = (time.time() - tide_data["last_sync"]) / 3600
+            tide_data["confidence"] = max(30, 100 - int(age_hours * 5))
+            return True
+    except:
+        pass
+    return False
+
+# ============ PREDICTION ALGORITHM ============
+
+def tide_predict():
+    global tide_data
+    # Lunar period: 12h 25min = 44700 seconds
+    LUNAR_PERIOD = 44700
+    
+    # Use most recent known data as baseline
+    last_high = tide_data.get("last_high", {"timestamp": 0, "level": 1.5})
+    last_low = tide_data.get("last_low", {"timestamp": 0, "level": 0.5})
+    
+    now = time.time()
+    
+    # Calculate amplitude from real data
+    amplitude = (last_high["level"] - last_low["level"]) / 2
+    midpoint = (last_high["level"] + last_low["level"]) / 2
+    
+    # Determine reference point and phase offset
+    if last_high["timestamp"] > last_low["timestamp"]:
+        ref_time = last_high["timestamp"]
+        phase_offset = 0  # High tide = cos(0) = 1
+    else:
+        ref_time = last_low["timestamp"]
+        phase_offset = math.pi  # Low tide = cos(π) = -1
+    
+    # Calculate current phase
+    elapsed = now - ref_time
+    phase = phase_offset + (elapsed / LUNAR_PERIOD) * 2 * math.pi
+    
+    # Calculate predicted level
+    current_height = midpoint + amplitude * math.cos(phase)
+    level = int((current_height / (midpoint * 2)) * 100)
+    level = max(0, min(100, level))
+    
+    # Determine direction from derivative
+    derivative = -amplitude * math.sin(phase)
+    if abs(derivative) < 0.05:
+        direction = "stable"
+    elif derivative > 0:
+        direction = "rising"
+    else:
+        direction = "falling"
+    
+    # Update state
+    tide_data["level"] = level
+    tide_data["direction"] = direction
+    tide_data["source"] = "PREDICT"
+    tide_data["confidence"] = 30
+    
+    # Update shared data
+    SHARED_DATA["TIDE"] = level
+    SHARED_DATA["TIDE_DIR"] = direction
+    SHARED_DATA["TIDE_CONF"] = 30
+
+# ============ API FETCH ============
+
+def tide_try_api(api_config):
+    global tide_data
     try:
         now = time.localtime()
         month = now[1]
         day = now[2]
         current_mins = now[3] * 60 + now[4]
         
-        url = f"{TIDE_API_BASE}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
-        response = urequests.get(url)
-        data = json.loads(response.text)
-        response.close()
+        if api_config["type"] == "tabuamare":
+            url = f"{api_config['base']}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
+            response = urequests.get(url, timeout=10)
+            data = json.loads(response.text)
+            response.close()
+            
+            if data.get("data") and len(data["data"]) > 0:
+                harbor = data["data"][0]
+                months = harbor.get("months", [])
+                if months:
+                    days = months[0].get("days", [])
+                    if days:
+                        hours = days[0].get("hours", [])
+                        return tide_process_entries(hours, current_mins, harbor.get("mean_level", 1.1), api_config["name"])
         
-        # Parse nested structure: data[0].months[0].days[0].hours[]
-        if data.get("data") and len(data["data"]) > 0:
-            harbor_data = data["data"][0]
-            months = harbor_data.get("months", [])
-            if months and len(months) > 0:
-                days = months[0].get("days", [])
-                if days and len(days) > 0:
-                    hours = days[0].get("hours", [])
-                    
-                    # Sort by time
-                    hours.sort(key=lambda e: tide_parse_time(e.get("hour", "00:00:00")[:5]))
-                    
-                    prev_entry = None
-                    next_entry = None
-                    
-                    for entry in hours:
-                        hour_str = entry.get("hour", "00:00:00")[:5]
-                        entry_time = tide_parse_time(hour_str)
-                        if entry_time <= current_mins:
-                            prev_entry = entry
-                        elif next_entry is None:
-                            next_entry = entry
-                    
-                    if prev_entry and next_entry:
-                        prev_time = tide_parse_time(prev_entry.get("hour", "00:00:00")[:5])
-                        next_time = tide_parse_time(next_entry.get("hour", "00:00:00")[:5])
-                        prev_height = float(prev_entry.get("level", 1))
-                        next_height = float(next_entry.get("level", 1))
-                        
-                        if next_time > prev_time:
-                            progress = (current_mins - prev_time) / (next_time - prev_time)
-                            current_height = prev_height + (next_height - prev_height) * progress
-                            mean_level = harbor_data.get("mean_level", 1.1)
-                            tide_level = min(100, max(0, int(current_height / (mean_level * 2) * 100)))
-                            SHARED_DATA["TIDE"] = tide_level
-                        
-                        diff = next_height - prev_height
-                        if abs(diff) < 0.1:
-                            tide_direction = "stable"
-                        elif diff > 0:
-                            tide_direction = "rising"
-                        else:
-                            tide_direction = "falling"
-                        SHARED_DATA["TIDE_DIR"] = tide_direction
-                        
-                        tide_next_change = next_entry.get("hour", "")[:5]
-                    
-                    elif prev_entry and not next_entry:
-                        # After last entry of day
-                        prev_height = float(prev_entry.get("level", 1))
-                        mean_level = harbor_data.get("mean_level", 1.1)
-                        tide_level = min(100, max(0, int(prev_height / (mean_level * 2) * 100)))
-                        SHARED_DATA["TIDE"] = tide_level
-                        
-                        if prev_height > mean_level:
-                            tide_direction = "falling"
-                        else:
-                            tide_direction = "rising"
-                        SHARED_DATA["TIDE_DIR"] = tide_direction
-                        
-                        if hours:
-                            tide_next_change = hours[0].get("hour", "")[:5] + " (tomorrow)"
-                    
-                    SHARED_DATA["TIDE_NEXT"] = tide_next_change
+        elif api_config["type"] == "worldtides":
+            # WorldTides API format (simplified, would need API key)
+            pass
         
-        tide_last_update = time.time()
-        print(f"OK:TIDE:SYNC:level={tide_level},dir={tide_direction}")
     except Exception as e:
-        print(f"ERR:TIDE:FETCH:{e}")
+        pass
+    
+    return False
+
+def tide_process_entries(hours, current_mins, mean_level, source):
+    global tide_data
+    
+    hours.sort(key=lambda e: tide_parse_time(e.get("hour", "00:00:00")[:5]))
+    
+    prev_entry = None
+    next_entry = None
+    
+    for entry in hours:
+        hour_str = entry.get("hour", "00:00:00")[:5]
+        entry_time = tide_parse_time(hour_str)
+        entry_level = float(entry.get("level", 1))
+        
+        # Track high/low for prediction learning
+        if entry_level > mean_level * 1.2:
+            tide_data["last_high"] = {"timestamp": time.time(), "level": entry_level}
+        elif entry_level < mean_level * 0.8:
+            tide_data["last_low"] = {"timestamp": time.time(), "level": entry_level}
+        
+        if entry_time <= current_mins:
+            prev_entry = entry
+        elif next_entry is None:
+            next_entry = entry
+    
+    if prev_entry and next_entry:
+        prev_time = tide_parse_time(prev_entry.get("hour", "00:00")[:5])
+        next_time = tide_parse_time(next_entry.get("hour", "00:00")[:5])
+        prev_height = float(prev_entry.get("level", 1))
+        next_height = float(next_entry.get("level", 1))
+        
+        if next_time > prev_time:
+            progress = (current_mins - prev_time) / (next_time - prev_time)
+            current_height = prev_height + (next_height - prev_height) * progress
+            level = min(100, max(0, int(current_height / (mean_level * 2) * 100)))
+            
+            diff = next_height - prev_height
+            if abs(diff) < 0.1: direction = "stable"
+            elif diff > 0: direction = "rising"
+            else: direction = "falling"
+            
+            # Update state
+            tide_data["level"] = level
+            tide_data["direction"] = direction
+            tide_data["source"] = source
+            tide_data["confidence"] = 100
+            tide_data["last_sync"] = time.time()
+            tide_data["next_event"] = {
+                "type": "high" if next_height > prev_height else "low",
+                "time": next_entry.get("hour", "")[:5],
+                "level": next_height
+            }
+            
+            # Update shared data
+            SHARED_DATA["TIDE"] = level
+            SHARED_DATA["TIDE_DIR"] = direction
+            SHARED_DATA["TIDE_CONF"] = 100
+            SHARED_DATA["TIDE_NEXT"] = tide_data["next_event"]["time"]
+            
+            # Save to cache
+            tide_save_cache()
+            return True
+    
+    return False
+
+# ============ MAIN INTELLIGENCE ============
+
+def tide_sync():
+    """Silent sync with fallback chain - always returns valid data"""
+    global tide_data
+    
+    # Try each API silently
+    for api in TIDE_APIS:
+        if tide_try_api(api):
+            return  # Success - done
+    
+    # All APIs failed - try cache
+    if tide_load_cache():
+        if tide_data["confidence"] > 30:
+            return  # Cache is fresh enough
+    
+    # Cache too old or empty - use prediction
+    tide_predict()
+
+def tide_update():
+    """Called from main loop - handles proactive sync"""
+    global tide_data
+    
+    now = time.time()
+    age = now - tide_data.get("last_sync", 0)
+    
+    # Proactive sync (before data expires)
+    if age > TIDE_PROACTIVE_SYNC:
+        if 'wifi_sta' in dir() and wifi_sta and wifi_sta.isconnected():
+            tide_sync()
+        elif age > TIDE_UPDATE_INTERVAL:
+            # Offline too long - use prediction
+            tide_predict()
 `,
         commands: `    if cmd == "TIDE:SYNC":
-        fetch_tide_data()
+        tide_sync()
+        print(f"OK:TIDE:SYNC:level={tide_data['level']},src={tide_data['source']},conf={tide_data['confidence']}")
         return True
     if cmd == "TIDE:STATUS":
-        print(f"OK:TIDE:STATUS:level={tide_level},dir={tide_direction},next={tide_next_change}")
+        d = tide_data
+        print(f"OK:TIDE:STATUS:level={d['level']},dir={d['direction']},conf={d['confidence']},src={d['source']}")
         return True
-    if cmd == "TIDE:FETCH":
-        fetch_tide_data()
+    if cmd == "TIDE:DIAG":
+        d = tide_data
+        age = int(time.time() - d.get("last_sync", 0))
+        print("=== TIDE INTELLIGENCE ===")
+        print(f"Level: {d['level']}% ({d['direction']})")
+        print(f"Source: {d['source']} (conf={d['confidence']}%)")
+        print(f"Age: {age}s")
+        print(f"Next: {d['next_event']['type']} at {d['next_event']['time']}")
+        print(f"Last High: {d['last_high']['level']}m")
+        print(f"Last Low: {d['last_low']['level']}m")
+        print("=========================")
+        return True
+    if cmd == "TIDE:FORCE:PREDICT":
+        tide_predict()
+        print(f"OK:TIDE:PREDICT:level={tide_data['level']}")
         return True
     if cmd == "TIDE:SHOW":
-        set_tide_enabled(True)
+        global tide_enabled
+        tide_enabled = True
         print("OK:TIDE:SHOW")
         return True
     if cmd == "TIDE:HIDE":
-        set_tide_enabled(False)
+        tide_enabled = False
         print("OK:TIDE:HIDE")
         return True
     if cmd.startswith("TIDE:LEVEL:"):
-        set_tide_level(cmd.split(":")[2])
-        return True
-    if cmd.startswith("TIDE:DIR:"):
-        set_tide_direction(cmd.split(":")[2])
+        tide_data["level"] = int(cmd.split(":")[2])
+        tide_data["source"] = "MANUAL"
+        SHARED_DATA["TIDE"] = tide_data["level"]
+        print(f"OK:TIDE:LEVEL:{tide_data['level']}")
         return True`,
-        init: `    # Initialize tide logic
-    print("TIDE: Logic ready")
-    SHARED_DATA["TIDE"] = tide_level
-    SHARED_DATA["TIDE_DIR"] = tide_direction`,
-        loop: `    # Premium Tide Logic update
-    if time.time() - tide_last_update > TIDE_UPDATE_INTERVAL:
-        if 'wifi_sta' in dir() and wifi_sta and wifi_sta.isconnected():
-            fetch_tide_data()`,
+        init: `    # Initialize Tide Intelligence System
+    print("TIDE: Intelligence System starting...")
+    
+    # Try to load cached data first
+    if tide_load_cache():
+        print(f"TIDE: Cache loaded (conf={tide_data['confidence']}%)")
+    else:
+        # No cache - set safe defaults (will sync when WiFi available)
+        tide_data["level"] = 50
+        tide_data["source"] = "INIT"
+        tide_data["confidence"] = 10
+        print("TIDE: No cache, using safe defaults")
+    
+    SHARED_DATA["TIDE"] = tide_data["level"]
+    SHARED_DATA["TIDE_DIR"] = tide_data["direction"]
+    SHARED_DATA["TIDE_CONF"] = tide_data["confidence"]`,
+        loop: `    # Tide Intelligence - Proactive Update
+    tide_update()`,
         caps: ['TIDE']
     };
 }

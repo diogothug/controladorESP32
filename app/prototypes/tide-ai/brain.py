@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 import pickle
@@ -12,36 +12,41 @@ DATA_FILE = "data/tide_history.csv"
 MODEL_FILE = "tide_model.pkl"
 
 def add_features(df):
-    """Adds cyclic time features and approximation of moon phase"""
+    """Adds advanced astronomical and cyclic features for precision"""
     df['datetime'] = pd.to_datetime(df['datetime'])
     
-    # 1. Cyclic Hour (Daily cycle)
-    # 24h cycle
+    # 1. Daily Cycle (24h)
     df['hour_sin'] = np.sin(2 * np.pi * df['datetime'].dt.hour / 24)
     df['hour_cos'] = np.cos(2 * np.pi * df['datetime'].dt.hour / 24)
     
-    # 2. Lunar Phase Approximation
-    # Lunar cycle approx 29.53 days
-    # Reference new moon: Jan 6, 2000 (just a reference epoch)
+    # 2. Annual Seasonal Cycle (365.25 days)
+    day_of_year = df['datetime'].dt.dayofyear
+    df['year_sin'] = np.sin(2 * np.pi * day_of_year / 365.25)
+    df['year_cos'] = np.cos(2 * np.pi * day_of_year / 365.25)
+    
+    # 3. Precise Lunar Phase (29.53 days)
     ref_date = pd.Timestamp("2000-01-06 18:14:00")
-    df['days_since_ref'] = (df['datetime'] - ref_date).dt.total_seconds() / (3600 * 24)
-    df['lunar_phase'] = df['days_since_ref'] % 29.53058867
+    days_since_ref = (df['datetime'] - ref_date).dt.total_seconds() / (3600 * 24)
+    lunar_phase = days_since_ref % 29.53058867
     
-    # Cyclic Lunar Phase
-    df['moon_sin'] = np.sin(2 * np.pi * df['lunar_phase'] / 29.5306)
-    df['moon_cos'] = np.cos(2 * np.pi * df['lunar_phase'] / 29.5306)
+    df['moon_sin'] = np.sin(2 * np.pi * lunar_phase / 29.5306)
+    df['moon_cos'] = np.cos(2 * np.pi * lunar_phase / 29.5306)
     
-    # 3. Tide Physics (Semi-diurnal approx)
-    # M2 constituent period: 12.4206 hours
+    # 4. Moon Illumination (Correlation with Spring/Neap tides)
+    # 0 = New Moon, 0.5 = Quarter, 1.0 = Full Moon
+    df['moon_illumination'] = 0.5 * (1 - np.cos(2 * np.pi * lunar_phase / 29.5306))
+    
+    # 5. Tidal Physics (M2 + S2 interaction proxy)
     m2_hours = 12.4206
     day_fraction = (df['datetime'].dt.hour * 3600 + df['datetime'].dt.minute * 60) / 3600
-    df['tide_wave_sin'] = np.sin(2 * np.pi * (day_fraction * 24 / m2_hours))
-    
+    df['tide_m2_sin'] = np.sin(2 * np.pi * (day_fraction * 24 / m2_hours))
+    df['tide_m2_cos'] = np.cos(2 * np.pi * (day_fraction * 24 / m2_hours))
+
     return df
 
 def train_model():
-    print("🧠 Tide AI Training")
-    print("===================")
+    print("🧠 Enhanced Tide AI Training")
+    print("==========================")
     
     # Load Data
     try:
@@ -55,19 +60,29 @@ def train_model():
     # Feature Engineering
     df = add_features(df)
     
-    # Features & Target
-    features = ['hour_sin', 'hour_cos', 'moon_sin', 'moon_cos', 'tide_wave_sin']
+    # Advanced Feature Set
+    features = [
+        'hour_sin', 'hour_cos', 
+        'year_sin', 'year_cos',
+        'moon_sin', 'moon_cos', 'moon_illumination',
+        'tide_m2_sin', 'tide_m2_cos'
+    ]
     target = 'level'
     
     X = df[features]
     y = df[target]
     
     # Split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=False)
     
-    # Train
-    print("Training Random Forest...")
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    # Train Gradient Boosting (Better for time series precision)
+    print("Training Gradient Boosting Regressor...")
+    model = GradientBoostingRegressor(
+        n_estimators=500,     # More trees
+        learning_rate=0.05,   # Slower learning for precision
+        max_depth=5,          # Deeper trees
+        random_state=42
+    )
     model.fit(X_train, y_train)
     
     # Evaluate
@@ -76,8 +91,8 @@ def train_model():
     r2 = r2_score(y_test, predictions)
     
     print(f"\nModel Performance:")
-    print(f"MAE: {mae:.4f} meters (Average Error)")
-    print(f"R²:  {r2:.4f} (Fit Quality)")
+    print(f"MAE: {mae:.4f} meters")
+    print(f"R²:  {r2:.4f}")
     
     # Save
     with open(MODEL_FILE, 'wb') as f:

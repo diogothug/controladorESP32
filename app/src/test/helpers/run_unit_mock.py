@@ -44,6 +44,7 @@ import network
 import urequests
 import neopixel
 import dht
+import nvs
 
 # Make json available (standard library)
 import json

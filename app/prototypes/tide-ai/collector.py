@@ -9,7 +9,7 @@ import os
 HARBOR_ID = 1  # Porto de Ilhéus
 API_BASE = "https://tabuamare.devtu.qzz.io/api/v1"
 OUTPUT_FILE = "data/tide_history.csv"
-DAYS_HISTORY = 30
+DAYS_HISTORY = 365
 DAYS_FUTURE = 7
 
 def fetch_day(date_obj):
