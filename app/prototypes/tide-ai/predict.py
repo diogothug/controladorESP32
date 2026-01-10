@@ -22,7 +22,15 @@ def predict_at(model, dt):
     df = brain.add_features(df)
     
     # Select features
-    features = ['hour_sin', 'hour_cos', 'moon_sin', 'moon_cos', 'tide_wave_sin']
+    features = [
+        'hour_sin', 'hour_cos', 
+        'year_sin', 'year_cos',
+        'moon_phase_sin', 'moon_phase_cos',
+        'moon_dist_sin', 'moon_dist_cos',
+        'moon_decl_sin', 'moon_decl_cos',
+        'interaction_phase_dist',
+        'tide_m2_sin', 'tide_m2_cos'
+    ]
     X = df[features]
     
     # Predict

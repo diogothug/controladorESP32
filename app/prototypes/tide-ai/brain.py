@@ -15,28 +15,46 @@ def add_features(df):
     """Adds advanced astronomical and cyclic features for precision"""
     df['datetime'] = pd.to_datetime(df['datetime'])
     
-    # 1. Daily Cycle (24h)
+    # Epoch J2000 (2000-01-01 12:00:00 UTC)
+    # Using a fixed reference allows consistent phase calculation across years
+    ref_date = pd.Timestamp("2000-01-01 12:00:00")
+    t_days = (df['datetime'] - ref_date).dt.total_seconds() / (3600 * 24)
+    
+    # 1. Daily Cycle (24h) - Earth Rotation
     df['hour_sin'] = np.sin(2 * np.pi * df['datetime'].dt.hour / 24)
     df['hour_cos'] = np.cos(2 * np.pi * df['datetime'].dt.hour / 24)
     
-    # 2. Annual Seasonal Cycle (365.25 days)
+    # 2. Annual Seasonal Cycle (365.25 days) - Solstices/Equinoxes
     day_of_year = df['datetime'].dt.dayofyear
-    df['year_sin'] = np.sin(2 * np.pi * day_of_year / 365.25)
-    df['year_cos'] = np.cos(2 * np.pi * day_of_year / 365.25)
+    df['year_sin'] = np.sin(2 * np.pi * day_of_year / 365.2524)
+    df['year_cos'] = np.cos(2 * np.pi * day_of_year / 365.2524)
     
-    # 3. Precise Lunar Phase (29.53 days)
-    ref_date = pd.Timestamp("2000-01-06 18:14:00")
-    days_since_ref = (df['datetime'] - ref_date).dt.total_seconds() / (3600 * 24)
-    lunar_phase = days_since_ref % 29.53058867
+    # 3. Synodic Month (29.53059 days) - Moon Phases (New/Full)
+    # Primary driver of Spring/Neap tides
+    synodic_period = 29.53059
+    synodic_phase = (t_days % synodic_period) / synodic_period
+    df['moon_phase_sin'] = np.sin(2 * np.pi * synodic_phase)
+    df['moon_phase_cos'] = np.cos(2 * np.pi * synodic_phase)
     
-    df['moon_sin'] = np.sin(2 * np.pi * lunar_phase / 29.5306)
-    df['moon_cos'] = np.cos(2 * np.pi * lunar_phase / 29.5306)
+    # 4. Anomalistic Month (27.55455 days) - Moon Distance (Perigee/Apogee)
+    # Affects amplitude (Perigee = stronger tides)
+    anomalistic_period = 27.55455
+    anomalistic_phase = (t_days % anomalistic_period) / anomalistic_period
+    df['moon_dist_sin'] = np.sin(2 * np.pi * anomalistic_phase)
+    df['moon_dist_cos'] = np.cos(2 * np.pi * anomalistic_phase)
     
-    # 4. Moon Illumination (Correlation with Spring/Neap tides)
-    # 0 = New Moon, 0.5 = Quarter, 1.0 = Full Moon
-    df['moon_illumination'] = 0.5 * (1 - np.cos(2 * np.pi * lunar_phase / 29.5306))
+    # 5. Tropical Month (27.32158 days) - Moon Declination
+    # Affects Diurnal Inequality (difference between two highs)
+    tropical_period = 27.32158
+    tropical_phase = (t_days % tropical_period) / tropical_period
+    df['moon_decl_sin'] = np.sin(2 * np.pi * tropical_phase)
+    df['moon_decl_cos'] = np.cos(2 * np.pi * tropical_phase)
     
-    # 5. Tidal Physics (M2 + S2 interaction proxy)
+    # 6. Interaction Terms (Harmonics)
+    # "King Tides" happen when Perigee coincides with Full/New Moon
+    df['interaction_phase_dist'] = df['moon_phase_cos'] * df['moon_dist_cos']
+    
+    # 7. Tidal Physics (M2 + S2 interaction proxy)
     m2_hours = 12.4206
     day_fraction = (df['datetime'].dt.hour * 3600 + df['datetime'].dt.minute * 60) / 3600
     df['tide_m2_sin'] = np.sin(2 * np.pi * (day_fraction * 24 / m2_hours))
@@ -45,8 +63,8 @@ def add_features(df):
     return df
 
 def train_model():
-    print("🧠 Enhanced Tide AI Training")
-    print("==========================")
+    print("🧠 Lunar Physics Tide AI Training")
+    print("===============================")
     
     # Load Data
     try:
@@ -60,11 +78,14 @@ def train_model():
     # Feature Engineering
     df = add_features(df)
     
-    # Advanced Feature Set
+    # Advanced Feature Set including Physics
     features = [
         'hour_sin', 'hour_cos', 
         'year_sin', 'year_cos',
-        'moon_sin', 'moon_cos', 'moon_illumination',
+        'moon_phase_sin', 'moon_phase_cos',
+        'moon_dist_sin', 'moon_dist_cos',
+        'moon_decl_sin', 'moon_decl_cos',
+        'interaction_phase_dist',
         'tide_m2_sin', 'tide_m2_cos'
     ]
     target = 'level'
@@ -75,12 +96,12 @@ def train_model():
     # Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=False)
     
-    # Train Gradient Boosting (Better for time series precision)
-    print("Training Gradient Boosting Regressor...")
+    # Train Gradient Boosting
+    print("Training Gradient Boosting Regressor (Physics Enhanced)...")
     model = GradientBoostingRegressor(
-        n_estimators=500,     # More trees
-        learning_rate=0.05,   # Slower learning for precision
-        max_depth=5,          # Deeper trees
+        n_estimators=600,     # Increased estimators
+        learning_rate=0.04,   # Slightly lower LR
+        max_depth=6,          # Deeper trees for complex interactions
         random_state=42
     )
     model.fit(X_train, y_train)

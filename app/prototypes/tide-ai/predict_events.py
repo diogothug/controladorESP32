@@ -34,7 +34,10 @@ def find_peaks(model, start_time, duration_hours=24):
     features = [
         'hour_sin', 'hour_cos', 
         'year_sin', 'year_cos',
-        'moon_sin', 'moon_cos', 'moon_illumination',
+        'moon_phase_sin', 'moon_phase_cos',
+        'moon_dist_sin', 'moon_dist_cos',
+        'moon_decl_sin', 'moon_decl_cos',
+        'interaction_phase_dist',
         'tide_m2_sin', 'tide_m2_cos'
     ]
     X = df[features]
@@ -43,6 +46,7 @@ def find_peaks(model, start_time, duration_hours=24):
     events = []
     
     # Find local extrema
+    raw_events = []
     for i in range(1, len(levels) - 1):
         prev_l = levels[i-1]
         curr_l = levels[i]
@@ -51,9 +55,19 @@ def find_peaks(model, start_time, duration_hours=24):
         t = timestamps[i]
         
         if curr_l > prev_l and curr_l > next_l:
-            events.append({"type": "🌊 PREAMAR (High)", "time": t, "level": curr_l})
+            raw_events.append({"type": "🌊 PREAMAR (High)", "time": t, "level": curr_l})
         elif curr_l < prev_l and curr_l < next_l:
-            events.append({"type": "🔻 BAIXAMAR (Low)", "time": t, "level": curr_l})
+            raw_events.append({"type": "🔻 BAIXAMAR (Low)", "time": t, "level": curr_l})
+
+    # Filter events (Must be separated by at least 4 hours)
+    if not raw_events:
+        return []
+
+    events = [raw_events[0]]
+    for e in raw_events[1:]:
+        last_time = events[-1]["time"]
+        if (e["time"] - last_time).total_seconds() > 4 * 3600:
+            events.append(e)
             
     return events
 
