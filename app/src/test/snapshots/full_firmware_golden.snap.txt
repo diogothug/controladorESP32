@@ -357,7 +357,7 @@ def mqtt_callback(topic, msg):
         m = msg.decode()
         print(f"MQTT: Recv {t}: {m}")
         # Map MQTT to internal commands
-        # Topic: prefix/cmd -> Payload: VAR:SET:TEMP:25
+        # Topic: prefix / cmd -> Payload: VAR: SET: TEMP: 25
         if t.endswith("/cmd"):
             handle_command(m)
     except Exception as e:
@@ -406,9 +406,6 @@ led_Status.value(0)
 
 # OTA Globals
 def start_ota_listener():
-    # Simple socket listener that accepts a file upload on port 8266
-    # This is a blocking operation usually, or async.
-    # For stability, we might just print instructions or start a separate mode.
     pass
 
 def do_ota_update(url):
@@ -439,7 +436,7 @@ http_socket = None
 http_poll = None
 dns_socket = None
 
-# Session management (Simple Token)
+# Session management(Simple Token)
 tech_session_token = None
 
 def setup_web_server():
@@ -451,12 +448,12 @@ def setup_web_server():
         http_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         http_socket.bind(addr)
         http_socket.listen(5)
-        
+
         http_poll = uselect.poll()
         http_poll.register(http_socket, uselect.POLLIN)
         print(f"WEB: Server listening on port {WEB_PORT}")
 
-        # DNS Server (Captive Portal)
+        # DNS Server(Captive Portal)
         if CAPTIVE_PORTAL and not wifi_sta.isconnected():
             setup_ap_mode()
             dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -480,7 +477,7 @@ def setup_ap_mode():
 def handle_dns_request(sock):
     try:
         data, addr = sock.recvfrom(1024)
-        # Simple DNS Hijack: Respond with own IP (192.168.4.1) for ALL queries
+        # Simple DNS Hijack: Respond with own IP(192.168.4.1) for ALL queries
         # DNS Header: ID(2), Flags(2), QCount(2), Ans(2), Auth(2), Add(2)
         # We construct a response that points to 192.168.4.1
         
@@ -493,8 +490,8 @@ def handle_dns_request(sock):
         # Counts: 1 Question, 1 Answer
         counts = b'\x00\x01\x00\x01\x00\x00\x00\x00'
         
-        # Question Section (copy from request)
-        # Find end of question (null byte)
+        # Question Section(copy from request)
+        # Find end of question(null byte)
         idx = 12
         while data[idx] != 0:
             idx += 1 + data[idx]
@@ -502,9 +499,9 @@ def handle_dns_request(sock):
         question = data[12:idx]
         
         # Answer Section
-        # Name Ptr (0xC00C), TYPE A (0x0001), CLASS IN (0x0001), TTL (60s), LEN (4), IP
+        # Name Ptr(0xC00C), TYPE A(0x0001), CLASS IN(0x0001), TTL(60s), LEN(4), IP
         answer = b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04\xc0\xa8\x04\x01'
-        
+
         response = trans_id + flags + counts + question + answer
         sock.sendto(response, addr)
     except Exception:
@@ -518,7 +515,7 @@ def handle_web_request(client):
         if not req_line:
             client.close()
             return
-            
+
         req_str = req_line.decode().strip()
         method, path, proto = req_str.split()
         
@@ -564,13 +561,13 @@ def handle_web_request(client):
                 # Redirect to root
                 client.send("HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n")
             else:
-                # Basic Command handling (GET /?cmd=...)
+                # Basic Command handling(GET /? cmd =...)
                 if "cmd=" in path:
                     handle_legacy_cmd(path)
-                    client.send("HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n")
-                else:
-                    serve_user_dashboard(client)
-                
+                client.send("HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n")
+                # else:
+                #    serve_user_dashboard(client)
+
         client.close()
     except Exception as e:
         print(f"WEB: Req Error: {e}")
@@ -588,7 +585,7 @@ def send_401(client):
 
 def handle_tech_login(client):
     global tech_session_token
-    # Read body (PIN)
+    # Read body(PIN)
     body = client.read(1024).decode()
     if TECH_PIN in body:
         import urandom
@@ -603,15 +600,15 @@ def handle_ota_update(client, headers):
         if content_len == 0:
             client.send("HTTP/1.1 400 Bad Request\r\n\r\nNo Content")
             return
-
+    
         print(f"WEB: Starting OTA Update ({content_len} bytes)")
         
         # We need to write to the 'next' partition. 
         # For simplicity in this snippets, we will write to a file 'update.bin' 
         # and rely on a bootloader or just overwrite main.py if it's a script update.
         # BUT for true OTA, we usually use esp32.Partition.
-        # Here we will overwrite main.py for script-based updates (Dangerous but standard for MicroPython file-based fw)
-        
+        # Here we will overwrite main.py for script-based updates(Dangerous but standard for MicroPython file-based fw)
+
         with open('main.py.new', 'wb') as f:
             remaining = content_len
             while remaining > 0:
@@ -624,7 +621,7 @@ def handle_ota_update(client, headers):
         # Swap files
         import os
         os.rename('main.py.new', 'main.py')
-        
+    
         client.send("HTTP/1.1 200 OK\r\n\r\nUpdate Complete. Rebooting...")
         time.sleep(1)
         machine.reset()
@@ -634,10 +631,10 @@ def handle_ota_update(client, headers):
         client.send("HTTP/1.1 500 Error\r\n\r\nUpdate Failed")
 
 def handle_wifi_config(client):
-    # Read JSON body {"ssid": "...", "pass": "..."}
+    # Read JSON body { "ssid": "...", "pass": "..." }
     try:
         body_json = client.read(1024).decode()
-        # Parse logic (simplified)
+        # Parse logic(simplified)
         import json
         creds = json.loads(body_json)
         
@@ -646,7 +643,7 @@ def handle_wifi_config(client):
         nvs = esp32.NVS("system")
         nvs.set_blob("wifi_creds", json.dumps(creds))
         nvs.commit()
-        
+
         client.send("HTTP/1.1 200 OK\r\n\r\nSaved. Rebooting...")
         time.sleep(1)
         machine.reset()
@@ -656,24 +653,24 @@ def handle_wifi_config(client):
 def serve_tech_login(client):
     html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:50px}input{padding:10px;font-size:18px;text-align:center}button{padding:10px 20px;font-size:18px;background:#007bff;color:#fff;border:none;margin-top:10px}</style></head>
     <body><h2>Technician Access</h2><input type="password" id="pin" placeholder="PIN"><br><button onclick="login()">Login</button>
-    <script>function login(){fetch('/tech/login',{method:'POST',body:document.getElementById('pin').value}).then(r=>{if(r.ok)location.reload();else alert('Invalid PIN')})}</script></body></html>"""
+        <script>function login() { fetch('/tech/login', { method: 'POST', body: document.getElementById('pin').value }).then(r => { if (r.ok) location.reload(); else alert('Invalid PIN') }) }</script></body></html>"""
     client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
 
 def serve_tech_dashboard(client):
     html = """<!DOCTYPE html><html><head><title>Tech Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#1a1a1a;color:#0f0;font-family:monospace;padding:20px}.card{border:1px solid #333;padding:15px;margin-bottom:15px}button{background:#333;color:#fff;border:1px solid #555;padding:8px;cursor:pointer}</style></head>
     <body><h1>TECH MODE</h1>
-    <div class="card"><h3>OTA Update</h3><input type="file" id="fw"><button onclick="upload()">Upload Firmware</button></div>
-    <div class="card"><h3>Actions</h3><button onclick="fetch('/tech/reset',{method:'POST'})">Factory Reset</button></div>
-    <script>
-    function upload(){
-        var f=document.getElementById('fw').files[0];
-        if(!f)return;
-        var h=new XMLHttpRequest();
-        h.open("POST","/tech/update");
-        h.send(f);
-        h.onload=()=>alert(h.responseText);
-    }
-    </script></body></html>"""
+        <div class="card"><h3>OTA Update</h3><input type="file" id="fw"><button onclick="upload()">Upload Firmware</button></div>
+            <div class="card"><h3>Actions</h3><button onclick="fetch('/tech/reset',{method:'POST'})">Factory Reset</button></div>
+                <script>
+function upload() {
+    var f = document.getElementById('fw').files[0];
+    if (!f) return;
+    var h = new XMLHttpRequest();
+    h.open("POST", "/tech/update");
+    h.send(f);
+    h.onload = () => alert(h.responseText);
+}
+</script></body></html>"""
     client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
 
 def handle_screen_api(client, req_str):
@@ -684,16 +681,15 @@ def handle_screen_api(client, req_str):
             body_str = parts[1]
             import json
             body = json.loads(body_str)
-            
+
             cmd = body.get("cmd", "")
             if cmd == "text":
                 x = body.get("x", 0)
                 y = body.get("y", 0)
                 msg = body.get("msg", "")
                 handle_command(f"DISP:TEXT:{x}:{y}:{msg}")
-            elif cmd == "clear":
                 handle_command("DISP:CLEAR")
-                
+
             client.send('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"status":"ok"}')
         else:
             client.send("HTTP/1.1 400 Bad Request\r\n\r\n")
@@ -711,7 +707,7 @@ def handle_legacy_cmd(path):
         for p in pairs:
             k, v = p.split("=")
             params[k] = v
-        
+
         if "mode" in params:
             new_mode = params["mode"]
             if new_mode in MODES:
@@ -723,25 +719,25 @@ def handle_legacy_cmd(path):
 def serve_user_dashboard(client):
     # Provisioning UI or Normal UI depending on mode
     is_ap = not wifi_sta.isconnected()
-    
+
     if is_ap:
         # Provisioning UI
         html = """<!DOCTYPE html><html><head><title>Setup WiFi</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#fff;color:#333;font-family:sans-serif;padding:20px;text-align:center}input{display:block;width:90%;margin:10px auto;padding:10px;border:1px solid #ccc}button{background:#007bff;color:#fff;padding:12px 30px;border:none;border-radius:5px;font-size:16px}</style></head>
-        <body><h1>Connect Device</h1><p>Enter your WiFi credentials</p>
-        <input id="ssid" placeholder="WiFi Name (SSID)">
-        <input id="pass" type="password" placeholder="Password">
-        <button onclick="save()">Connect</button>
-        <script>function save(){fetch('/api/wifi',{method:'POST',body:JSON.stringify({ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value})}).then(r=>alert('Saved. Device will reboot.'))}</script></body></html>"""
+    <body > <h1>Connect Device < /h1><p>Enter your WiFi credentials</p >
+        <input id="ssid" placeholder = "WiFi Name (SSID)" >
+            <input id="pass" type = "password" placeholder = "Password" >
+                <button onclick="save()" > Connect </button>
+                    <script > function save() { fetch('/api/wifi', { method: 'POST', body: JSON.stringify({ ssid: document.getElementById('ssid').value, pass: document.getElementById('pass').value }) }).then(r => alert('Saved. Device will reboot.')) } </script ></body > </html>"""
     else:
         # Normal User UI
         html = f"""<!DOCTYPE html><html><head><title>{WEB_TITLE}</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{{background:#111;color:#eee;font-family:sans-serif;text-align:center;padding:20px}}.mode-btn{{display:block;width:100%;padding:15px;margin:10px 0;background:#333;color:#fff;text-decoration:none;border-radius:8px}}</style></head>
-        <body><h1>{WEB_TITLE}</h1><h3>Current Mode: {current_mode}</h3>
-        <a href="/?cmd=mode&val=AMBIENT" class="mode-btn">AMBIENT</a>
-        <a href="/?cmd=mode&val=PARTY" class="mode-btn">PARTY</a>
-        <a href="/?cmd=mode&val=SIGNAGE" class="mode-btn">SIGNAGE</a>
-        <br><a href="/tech" style="color:#555;font-size:12px">Technician Access</a></body></html>"""
+    <body > <h1>{ WEB_TITLE } < /h1><h3>Current Mode: {current_mode}</h3 >
+    <a href="/?cmd=mode&val=AMBIENT" class="mode-btn" > AMBIENT </a>
+        <a href = "/?cmd=mode&val=PARTY" class="mode-btn" > PARTY </a>
+            <a href = "/?cmd=mode&val=SIGNAGE" class="mode-btn" > SIGNAGE </a>
+                <br > <a href="/tech" style = "color:#555;font-size:12px" > Technician Access < /a></body > </html>"""
 
-    client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
+client.send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + html)
 
 
 # ============ SERIAL ============
@@ -770,6 +766,19 @@ def handle_command(cmd):
         gc.collect()
         print(f"OK:SYS:INFO:MEM={gc.mem_free()};MODULES={','.join(MODULES)}")
         return True
+
+    # ============ COMMAND HANDLERS ============
+
+def set_tide_level(level):
+    # Manual Override (Testing)
+    tide_physics["level_abs"] = level
+    tide_physics["timestamp"] = time.time()
+    tide_update_intelligence()
+
+def set_tide_direction(direction):
+    # Manual Override
+    tide_cycle["type"] = direction
+    SHARED_DATA["TIDE_DIR"] = direction
 
     # ============ VARIABLE COMMANDS ============
     if cmd.startswith("VAR:SET:"):
@@ -1254,15 +1263,15 @@ while True:
     # MQTT Check
     if time.ticks_ms() % 100 == 0:
         mqtt_check()
-    # Web Server Poll (HTTP + DNS)
-    if http_poll:
-        res = http_poll.poll(0)
-        for sock, ev in res:
-            if sock == http_socket:
-                client, addr = http_socket.accept()
-                handle_web_request(client)
+    # Web Server Poll(HTTP + DNS)
+if http_poll:
+    res = http_poll.poll(0)
+for sock, ev in res:
+    if sock == http_socket:
+        client, addr = http_socket.accept()
+handle_web_request(client)
             elif sock == dns_socket:
-                handle_dns_request(dns_socket)
+handle_dns_request(dns_socket)
     
     # Measure loop time for CPU stats
     loop_time = time.ticks_diff(time.ticks_ms(), loop_start) / 1000.0

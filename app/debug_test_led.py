@@ -351,6 +351,19 @@ def handle_command(cmd):
         print(f"OK:SYS:INFO:MEM={gc.mem_free()};MODULES={','.join(MODULES)}")
         return True
 
+    # ============ COMMAND HANDLERS ============
+
+def set_tide_level(level):
+    # Manual Override (Testing)
+    tide_physics["level_abs"] = level
+    tide_physics["timestamp"] = time.time()
+    tide_update_intelligence()
+
+def set_tide_direction(direction):
+    # Manual Override
+    tide_cycle["type"] = direction
+    SHARED_DATA["TIDE_DIR"] = direction
+
     # ============ VARIABLE COMMANDS ============
     if cmd.startswith("VAR:SET:"):
         # VAR:SET:KEY:VALUE

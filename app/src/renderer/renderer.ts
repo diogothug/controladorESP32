@@ -2028,6 +2028,12 @@ const tideLowColorInput = document.getElementById('tide-low-color') as HTMLInput
 const tideUpdateIntervalSelect = document.getElementById('tide-update-interval') as HTMLSelectElement;
 const tideRisingIndicatorInput = document.getElementById('tide-rising-indicator') as HTMLInputElement;
 
+// WorldTides Advanced Config
+const tideWtEnabled = document.getElementById('tide-wt-enabled') as HTMLInputElement;
+const tideWtLat = document.getElementById('tide-wt-lat') as HTMLInputElement;
+const tideWtLon = document.getElementById('tide-wt-lon') as HTMLInputElement;
+const tideWtKey = document.getElementById('tide-wt-key') as HTMLInputElement;
+
 // Store harbors data for reference
 let tideHarborsCache: Array<{ id: number, name: string }> = [];
 
@@ -2047,50 +2053,128 @@ function closeTideModal() {
 async function loadTideStates() {
     if (!tideStateSelect) return;
 
-    try {
-        tideStateSelect.innerHTML = '<option value="" disabled selected>Carregando...</option>';
-        const states = await (window as any).tide.getStates();
-        tideStateSelect.innerHTML = '<option value="" disabled selected>Selecione um estado</option>';
+    const CACHE_KEY = 'tide_states_cache';
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
 
+    // Try to load from cache first (instant)
+    try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+
+            // Use cache if valid
+            if (age < CACHE_TTL && Array.isArray(data)) {
+                renderStatesSelect(data);
+
+                // Refresh in background if older than 1 hour
+                if (age > 60 * 60 * 1000) {
+                    fetchAndCacheStates(CACHE_KEY).catch(() => { });
+                }
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('Cache read error:', e);
+    }
+
+    // No valid cache - fetch from API
+    tideStateSelect.innerHTML = '<option value="" disabled selected>Carregando...</option>';
+    await fetchAndCacheStates(CACHE_KEY);
+}
+
+function renderStatesSelect(states: string[]) {
+    if (!tideStateSelect) return;
+    tideStateSelect.innerHTML = '<option value="" disabled selected>Selecione um estado</option>';
+    states.forEach((state: string) => {
+        const option = document.createElement('option');
+        option.value = state.toLowerCase();
+        option.textContent = state.toUpperCase();
+        tideStateSelect.appendChild(option);
+    });
+}
+
+async function fetchAndCacheStates(cacheKey: string) {
+    try {
+        const states = await (window as any).tide.getStates();
         if (Array.isArray(states)) {
-            states.forEach((state: string) => {
-                const option = document.createElement('option');
-                option.value = state.toLowerCase();
-                option.textContent = state.toUpperCase();
-                tideStateSelect.appendChild(option);
-            });
+            localStorage.setItem(cacheKey, JSON.stringify({
+                data: states,
+                timestamp: Date.now()
+            }));
+            renderStatesSelect(states);
         }
     } catch (error) {
         console.error('Failed to load states:', error);
-        tideStateSelect.innerHTML = '<option value="" disabled selected>Erro ao carregar</option>';
+        if (tideStateSelect) {
+            tideStateSelect.innerHTML = '<option value="" disabled selected>Erro ao carregar</option>';
+        }
     }
 }
 
 async function loadTideHarbors(state: string) {
     if (!tideHarborSelect) return;
 
-    try {
-        tideHarborSelect.disabled = true;
-        tideHarborSelect.innerHTML = '<option value="" disabled selected>Carregando portos...</option>';
+    const CACHE_KEY = `tide_harbors_${state}`;
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+    // Try cache first (instant)
+    try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+
+            if (age < CACHE_TTL && Array.isArray(data)) {
+                tideHarborsCache = data;
+                renderHarborsSelect(data);
+
+                // Refresh in background if older than 1 hour
+                if (age > 60 * 60 * 1000) {
+                    fetchAndCacheHarbors(state, CACHE_KEY).catch(() => { });
+                }
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('Cache read error:', e);
+    }
+
+    // No valid cache - fetch from API
+    tideHarborSelect.disabled = true;
+    tideHarborSelect.innerHTML = '<option value="" disabled selected>Carregando portos...</option>';
+    await fetchAndCacheHarbors(state, CACHE_KEY);
+}
+
+function renderHarborsSelect(harbors: Array<{ id: number, name: string }>) {
+    if (!tideHarborSelect) return;
+    tideHarborSelect.innerHTML = '<option value="" disabled selected>Selecione um porto</option>';
+    harbors.forEach((harbor) => {
+        const option = document.createElement('option');
+        option.value = String(harbor.id);
+        option.textContent = harbor.name;
+        tideHarborSelect.appendChild(option);
+    });
+    tideHarborSelect.disabled = false;
+}
+
+async function fetchAndCacheHarbors(state: string, cacheKey: string) {
+    try {
         const harbors = await (window as any).tide.getHarbors(state);
         tideHarborsCache = harbors || [];
 
-        tideHarborSelect.innerHTML = '<option value="" disabled selected>Selecione um porto</option>';
-
         if (Array.isArray(harbors)) {
-            harbors.forEach((harbor: { id: number, name: string }) => {
-                const option = document.createElement('option');
-                option.value = String(harbor.id);
-                option.textContent = harbor.name;
-                tideHarborSelect.appendChild(option);
-            });
+            localStorage.setItem(cacheKey, JSON.stringify({
+                data: harbors,
+                timestamp: Date.now()
+            }));
+            renderHarborsSelect(harbors);
         }
-
-        tideHarborSelect.disabled = false;
     } catch (error) {
         console.error('Failed to load harbors:', error);
-        tideHarborSelect.innerHTML = '<option value="" disabled selected>Erro ao carregar</option>';
+        if (tideHarborSelect) {
+            tideHarborSelect.innerHTML = '<option value="" disabled selected>Erro ao carregar</option>';
+        }
     }
 }
 
@@ -2111,6 +2195,14 @@ async function saveTideModule() {
     // Remove existing Tide modules (Singleton)
     currentProject.modules = currentProject.modules.filter(m => m.type !== 'TIDE');
 
+    // Build WorldTides config if enabled
+    const worldTidesConfig = tideWtEnabled?.checked ? {
+        enabled: true,
+        lat: parseFloat(tideWtLat?.value || '-14.78'),
+        lon: parseFloat(tideWtLon?.value || '-39.03'),
+        key: tideWtKey?.value || ''
+    } : undefined;
+
     const newModule: ModuleConfig = {
         id: crypto.randomUUID(),
         type: 'TIDE',
@@ -2126,7 +2218,8 @@ async function saveTideModule() {
             lowTideColor: tideLowColorInput?.value || '#FFD700',
             risingIndicator: tideRisingIndicatorInput?.checked ?? true,
             ledCount: parseInt(tideLedCountInput?.value || '8'),
-            neopixelPin: parseInt(tideNeopixelPinInput?.value || '2')
+            neopixelPin: parseInt(tideNeopixelPinInput?.value || '2'),
+            worldTides: worldTidesConfig
         }
     };
 
@@ -2328,7 +2421,7 @@ const neoVoltage = document.getElementById('neo-voltage') as HTMLSelectElement;
 const neoMaxCurrent = document.getElementById('neo-max-current') as HTMLInputElement;
 const neoGamma = document.getElementById('neo-gamma') as HTMLInputElement;
 const neoGammaValue = document.getElementById('neo-gamma-value') as HTMLSpanElement;
-const neoAutoBright = document.getElementById('neo-auto-bright') as HTMLInputElement;
+const neoAutoBright = document.getElementById('neo-auto-brightness') as HTMLInputElement;
 
 const neoAnimColor = document.getElementById('neo-anim-color') as HTMLInputElement;
 const neoAnimSpeed = document.getElementById('neo-anim-speed') as HTMLInputElement;
@@ -2403,7 +2496,8 @@ function saveNeoPixelModule(): void {
             colorDepth: colorOrder.includes('W') ? '32bit' : '24bit',
             serpentine: serpentine,
             defaultAnimation: animation,
-            transitionSpeed: transitionSpeed
+            transitionSpeed: transitionSpeed,
+            autoBrightness: neoAutoBright?.checked ?? false
         }
     };
 

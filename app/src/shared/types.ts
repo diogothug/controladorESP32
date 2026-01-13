@@ -148,6 +148,7 @@ export interface NeoPixelConfig {
     defaultAnimation: AnimationType; // Animation to run on startup
     transitionSpeed?: 'SLOW' | 'MEDIUM' | 'FAST' | 'INSTANT'; // Transition speed
     customAnimation?: CustomAnimationData; // Custom animation frames (for CUSTOM type)
+    autoBrightness?: boolean;     // Adjust brightness automatically via LDR sensor
 }
 
 export interface SensorConfig {
@@ -185,6 +186,12 @@ export interface TideConfig {
     risingIndicator: boolean;   // Show rising animation
     ledCount: number;           // Number of LEDs for tide bar
     neopixelPin: number;        // Pin connected to LEDs
+    worldTides?: {              // WorldTides backup API (optional)
+        enabled: boolean;
+        lat: number;
+        lon: number;
+        key: string;
+    };
 }
 
 export interface WebServerConfig {
@@ -250,11 +257,16 @@ export interface AutomationConfig {
 
 export interface LdrConfig {
     enabled: boolean;
-    interval: number;       // Reading interval in ms
-    minReading: number;     // ADC value for dark (0-4095)
-    maxReading: number;     // ADC value for bright (0-4095)
-    minBrightness: number;  // 0-255
-    maxBrightness: number;  // 0-255
+    interval: number;           // Reading interval in ms
+    minReading: number;         // ADC value for dark (0-4095)
+    maxReading: number;         // ADC value for bright (0-4095)
+    minBrightness: number;      // 0-255
+    maxBrightness: number;      // 0-255
+    // Anti-flicker settings
+    hysteresis?: number;        // Min change to trigger update (default: 15)
+    smoothing?: number;         // EMA alpha 0.1-0.5 (default: 0.2)
+    delayMs?: number;           // Delay before applying change (default: 2000)
+    stableReadings?: number;    // Required stable readings (default: 3)
 }
 
 // === DEVICE MODES (Phase 11) ===
@@ -339,7 +351,7 @@ export interface AudioConfig {
 
 export type ModuleType =
     'LED' | 'NEOPIXEL' | 'TEMP_SENSOR' | 'RELAY' | 'BUTTON' | 'PWM' |
-    'ADC' | 'WIFI' | 'CLOCK' | 'TIDE' | 'ENCODER' | 'PIR' | 'LDR' | 'MIC' |
+    'ADC' | 'WIFI' | 'CLOCK' | 'TIDE' | 'ENCODER' | 'PIR' | 'LDR' |
     'WEB_SERVER' | 'MQTT' | 'OTA' | 'UDP' |
     'ESPNOW' | 'BLE' | 'DISPLAY' | 'NVS' | 'AUTOMATION' | 'MODE' | 'TELEMETRY' | 'AUDIO';
 
@@ -367,7 +379,7 @@ export interface ModuleConfig {
     modeConfig?: DeviceModeConfig;
     telemetryConfig?: TelemetryConfig;
     audioConfig?: AudioConfig;
-    // Generic options for input modules (BUTTON, ENCODER, PIR, LDR, MIC)
+    // Generic options for input modules (BUTTON, ENCODER, PIR, LDR)
     options?: {
         // BUTTON options
         pullup?: boolean;       // Use internal pullup (default: true)
@@ -381,9 +393,6 @@ export interface ModuleConfig {
         thresholdLow?: number;  // Dark threshold (default: 500)
         thresholdHigh?: number; // Bright threshold (default: 3000)
         interval?: number;      // Read interval in ms (default: 1000)
-        // MIC options
-        threshold?: number;     // Loud threshold (default: 2500)
-        samples?: number;       // Sample count for averaging (default: 32)
     };
 }
 

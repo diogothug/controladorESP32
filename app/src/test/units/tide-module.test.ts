@@ -12,75 +12,134 @@ import { ModuleConfig, TideConfig } from '../../shared/types';
 describe('Tide Module - Code Generation', () => {
 
     // Helper to generate firmware with Tide module
-    function genTideFirmware(tideConfig?: Partial<TideConfig>, neoConfig?: Partial<any>): string {
-        const modules: ModuleConfig[] = [
-            {
-                id: '1', type: 'TIDE', name: 'TideTracker', pin: 0,
-                tideConfig: {
-                    enabled: true,
-                    harborId: 1,
-                    harborName: 'Porto de Ilhéus',
-                    state: 'ba',
-                    updateInterval: 30,
-                    highTideColor: '#0080FF',
-                    lowTideColor: '#FFD700',
-                    risingIndicator: true,
-                    ledCount: 16,
-                    neopixelPin: 5,
-                    ...tideConfig
-                }
-            },
-            {
-                id: '2', type: 'NEOPIXEL', name: 'TideLEDs', pin: 5,
-                neoPixelConfig: {
-                    pixelCount: 64,
-                    matrixWidth: 8,
-                    brightness: 50,
-                    colorOrder: 'GRB',
-                    colorDepth: '24bit',
-                    defaultAnimation: 'TIDE_SIMPLE',
-                    ...neoConfig
-                }
+    function genTideFirmware(tideModuleConfig?: ModuleConfig, neoModuleConfig?: ModuleConfig | null): string {
+        const defaultTideConfig: ModuleConfig = {
+            id: '1', type: 'TIDE', name: 'TideTracker', pin: 0,
+            tideConfig: {
+                enabled: true,
+                harborId: 1,
+                harborName: 'Porto de Ilhéus',
+                state: 'ba',
+                updateInterval: 30,
+                highTideColor: '#0080FF',
+                lowTideColor: '#FFD700',
+                risingIndicator: true,
+                ledCount: 16,
+                neopixelPin: 5,
             }
-        ];
+        };
+
+        const defaultNeoPixelConfig: ModuleConfig = {
+            id: '2', type: 'NEOPIXEL', name: 'TideLEDs', pin: 5,
+            neoPixelConfig: {
+                pixelCount: 64,
+                matrixWidth: 8,
+                brightness: 50,
+                colorOrder: 'GRB',
+                colorDepth: '24bit',
+                defaultAnimation: 'TIDE_SIMPLE',
+            }
+        };
+
+        const modules: ModuleConfig[] = [];
+        if (tideModuleConfig) {
+            modules.push(tideModuleConfig);
+        } else {
+            modules.push(defaultTideConfig);
+        }
+
+        if (neoModuleConfig) {
+            modules.push(neoModuleConfig);
+        } else {
+            // Only add default NeoPixel if it's not explicitly excluded by passing null
+            if (neoModuleConfig !== null) {
+                modules.push(defaultNeoPixelConfig);
+            }
+        }
 
         return generateModularMicroPython({
             appName: 'TideTest',
-            semanticVersion: '3.0.0',
-            modules,
-            meta: { generatedBy: 'TEST' }
+            semanticVersion: '1.0.0',
+            modules: modules
         });
     }
 
     it('should generate TIDE module with correct configuration', () => {
-        const code = genTideFirmware();
+        const config: ModuleConfig = {
+            id: 'tide-1',
+            type: 'TIDE',
+            name: 'TideTracker',
+            pin: 0,
+            tideConfig: {
+                enabled: true,
+                harborId: 100,
+                harborName: 'Leixoes',
+                state: 'pt',
+                updateInterval: 60,
+                highTideColor: '#FFFFFF',
+                lowTideColor: '#000000',
+                risingIndicator: true,
+                ledCount: 16,
+                neopixelPin: 5
+            }
+        };
 
-        // Check Tide configuration is injected
-        expect(code).toContain('TIDE_HARBOR_ID = 1');
-        expect(code).toContain('TIDE_UPDATE_INTERVAL');
-        expect(code).toContain('TIDE_API_BASE');
+        const result = genTideFirmware(config, null); // Pass null for neoModuleConfig to exclude it
+
+        // Assert imports
+        expect(result).toContain('import urequests');
+        expect(result).toContain('import json');
+
+        // Assert Configuration
+        expect(result).toContain('TIDE_HARBOR_ID = 100');
+        expect(result).toContain('TIDE_UPDATE_INTERVAL = 3600');
+        expect(result).toContain('TIDE_APIS = [');
+
+        // Assert 3-Layer Architecture Data Structures
+        expect(result).toContain('tide_physics = {');
+        expect(result).toContain('"level_abs": 0.0');
+        expect(result).toContain('tide_cycle = {');
+        expect(result).toContain('"type": "rising"');
+        expect(result).toContain('tide_visual = {');
     });
 
-    it('should include urequests import for API calls', () => {
-        const code = genTideFirmware();
-        expect(code).toContain('import urequests');
-        expect(code).toContain('import json');
+    it('should generate get_tide_depth_color function', () => {
+        const config: ModuleConfig = {
+            id: 'tide-1',
+            type: 'TIDE',
+            name: 'Tide',
+            pin: 0,
+            tideConfig: {
+                enabled: true,
+                harborId: 1,
+                harborName: 'Porto',
+                state: 'pt',
+                updateInterval: 30,
+                highTideColor: '#50B4C8',
+                lowTideColor: '#00283C',
+                risingIndicator: true,
+                ledCount: 16,
+                neopixelPin: 5
+            }
+        };
+        const result = genTideFirmware(config, null); // Pass null for neoModuleConfig to exclude it
+        expect(result).toContain('def get_tide_depth_color(pos_norm, row, max_row):');
+        expect(result).toContain('tide_lerp_color_tuple');
+    });
+
+    it('should generate tide_physics and tide_cycle variables', () => {
+        const config: ModuleConfig = {
+            id: 'tide-1', type: 'TIDE', name: 'Tide', pin: 0
+        };
+        const result = genTideFirmware(config, null); // Pass null for neoModuleConfig to exclude it
+        expect(result).toContain('tide_physics = {');
+        expect(result).toContain('tide_cycle = {');
+        expect(result).not.toContain('tide_data = {'); // Old var should be gone
     });
 
     it('should generate lerp_color function', () => {
         const code = genTideFirmware();
-        expect(code).toContain('def lerp_color(c1, c2, t):');
-    });
-
-    it('should generate get_tide_depth_color function', () => {
-        const code = genTideFirmware();
-        expect(code).toContain('def get_tide_depth_color(');
-    });
-
-    it('should generate tide_level and tide_direction variables', () => {
-        const code = genTideFirmware();
-        expect(code).toContain('tide_level = 50');
-        expect(code).toContain('tide_direction = "rising"');
+        expect(code).toContain('def tide_lerp(');
     });
 
     it('should generate set_tide_level command handler', () => {
@@ -100,7 +159,7 @@ describe('Tide Module - Code Generation', () => {
 
     it('should integrate with SHARED_DATA store', () => {
         const code = genTideFirmware();
-        expect(code).toContain('SHARED_DATA["TIDE"]');
+        expect(code).toContain('SHARED_DATA["TIDE_LEVEL"]');
         expect(code).toContain('SHARED_DATA["TIDE_DIR"]');
     });
 
@@ -352,5 +411,102 @@ describe('Tide Module - Command Handlers', () => {
 
         // Check for TIDE:FETCH command handling
         expect(code).toContain('TIDE:FETCH');
+    });
+});
+
+describe('Tide Module - API Response Parsing', () => {
+
+    it('should generate Tábua de Marés API parsing code', () => {
+        const modules: ModuleConfig[] = [
+            {
+                id: '1', type: 'TIDE', name: 'Tide', pin: 0,
+                tideConfig: {
+                    enabled: true, harborId: 1, harborName: 'Test', state: 'ba',
+                    updateInterval: 30, highTideColor: '#0080FF', lowTideColor: '#FFD700',
+                    risingIndicator: true, ledCount: 16, neopixelPin: 5
+                }
+            }
+        ];
+
+        const code = generateModularMicroPython({
+            appName: 'Test', semanticVersion: '1.0.0', modules, meta: {}
+        });
+
+        // Validate API URL construction
+        expect(code).toContain('tabua-mare');
+        expect(code).toContain('TIDE_HARBOR_ID');
+
+        // Validate response parsing
+        expect(code).toContain('harbor.get("months"');
+        expect(code).toContain('days_data');
+        expect(code).toContain('entry["hour"]');
+        expect(code).toContain('entry["level"]');
+    });
+
+    it('should generate WorldTides API fallback code', () => {
+        const modules: ModuleConfig[] = [
+            {
+                id: '1', type: 'TIDE', name: 'Tide', pin: 0,
+                tideConfig: {
+                    enabled: true, harborId: 1, harborName: 'Test', state: 'ba',
+                    updateInterval: 30, highTideColor: '#0080FF', lowTideColor: '#FFD700',
+                    risingIndicator: true, ledCount: 16, neopixelPin: 5
+                }
+            }
+        ];
+
+        const code = generateModularMicroPython({
+            appName: 'Test', semanticVersion: '1.0.0', modules, meta: {}
+        });
+
+        // Validate WorldTides fallback exists
+        expect(code).toContain('WorldTides');
+        expect(code).toContain('extremes');
+        expect(code).toContain('lat');
+        expect(code).toContain('lon');
+    });
+
+    it('should generate NVS cache fallback code', () => {
+        const modules: ModuleConfig[] = [
+            {
+                id: '1', type: 'TIDE', name: 'Tide', pin: 0,
+                tideConfig: {
+                    enabled: true, harborId: 1, harborName: 'Test', state: 'ba',
+                    updateInterval: 30, highTideColor: '#0080FF', lowTideColor: '#FFD700',
+                    risingIndicator: true, ledCount: 16, neopixelPin: 5
+                }
+            }
+        ];
+
+        const code = generateModularMicroPython({
+            appName: 'Test', semanticVersion: '1.0.0', modules, meta: {}
+        });
+
+        // Validate cache functions
+        expect(code).toContain('tide_save_cache');
+        expect(code).toContain('tide_load_cache');
+        expect(code).toContain('tide_cache');
+        expect(code).toContain('nvs.set_str');
+    });
+
+    it('should generate safe defaults fallback', () => {
+        const modules: ModuleConfig[] = [
+            {
+                id: '1', type: 'TIDE', name: 'Tide', pin: 0,
+                tideConfig: {
+                    enabled: true, harborId: 1, harborName: 'Test', state: 'ba',
+                    updateInterval: 30, highTideColor: '#0080FF', lowTideColor: '#FFD700',
+                    risingIndicator: true, ledCount: 16, neopixelPin: 5
+                }
+            }
+        ];
+
+        const code = generateModularMicroPython({
+            appName: 'Test', semanticVersion: '1.0.0', modules, meta: {}
+        });
+
+        // Validate safe defaults logic
+        expect(code).toContain('Using safe defaults');
+        expect(code).toContain('confidence"] = 20');
     });
 });

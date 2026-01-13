@@ -20,6 +20,8 @@ import './units/firmware-automation.test';
 import './units/firmware-mock.test';
 import './units/tide-visuals.test';
 import './units/tide-module.test';
+import './units/microsoft-style.test';
+import './units/tide-visual-language.test';
 
 // Parse CLI args and run
 const options = parseCliArgs();

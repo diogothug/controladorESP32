@@ -15,14 +15,33 @@ MOCK_TIDE_DATA = {
             "days": [{
                 "day": 9,
                 "hours": [
-                    {"hour": "00:15:00", "level": 0.3, "type": "low"},
-                    {"hour": "06:30:00", "level": 1.8, "type": "high"},
-                    {"hour": "12:45:00", "level": 0.4, "type": "low"},
-                    {"hour": "18:58:00", "level": 1.9, "type": "high"},
+                    {"hour": "00:15", "level": 0.3},
+                    {"hour": "06:30", "level": 1.8},
+                    {"hour": "12:45", "level": 0.4},
+                    {"hour": "18:58", "level": 1.9},
                 ]
             }]
         }]
     }]
+}
+
+# Simulated WorldTides API response
+MOCK_WORLDTIDES_DATA = {
+    "status": 200,
+    "callCount": 1,
+    "copyright": "Tidal data from WorldTides",
+    "requestLat": -14.78,
+    "requestLon": -39.03,
+    "responseLat": -14.78,
+    "responseLon": -39.03,
+    "atlas": "TPXO",
+    "station": "Porto de Ilhéus",
+    "extremes": [
+        {"dt": 1736380500, "date": "2026-01-09T00:15:00+0000", "height": 0.3, "type": "Low"},
+        {"dt": 1736402700, "date": "2026-01-09T06:30:00+0000", "height": 1.8, "type": "High"},
+        {"dt": 1736425500, "date": "2026-01-09T12:45:00+0000", "height": 0.4, "type": "Low"},
+        {"dt": 1736447880, "date": "2026-01-09T18:58:00+0000", "height": 1.9, "type": "High"},
+    ]
 }
 
 # Response class mimicking urequests.Response
@@ -67,9 +86,18 @@ def get(url, headers=None, timeout=None):
         'headers': headers
     })
     
+    # Check custom responses first
+    for pattern, (data, status) in _custom_responses.items():
+        if pattern in url:
+            return Response(_json.dumps(data), status)
+    
     # Parse URL to determine response
-    if 'tabua-mare' in url:
-        # Tide table request
+    if 'worldtides.info' in url or 'extremes' in url:
+        # WorldTides API request
+        return Response(_json.dumps(MOCK_WORLDTIDES_DATA))
+    
+    elif 'tabua-mare' in url:
+        # Tábua de Marés request
         return Response(_json.dumps(MOCK_TIDE_DATA))
     
     elif 'harbor_names' in url:

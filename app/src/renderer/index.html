@@ -2063,6 +2063,37 @@
             Mostrar indicador de subida/descida (pulso LED)
           </label>
         </div>
+
+        <!-- WorldTides Backup API (Advanced) -->
+        <hr style="border-color: rgba(255,255,255,0.1); margin: 15px 0;">
+        <details class="form-group" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+          <summary style="cursor: pointer; font-weight: 600; margin-bottom: 10px;">
+            🌍 API Alternativa (WorldTides) - Backup Internacional
+          </summary>
+          <div class="form-group" style="margin-top: 10px;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="tide-wt-enabled">
+              Habilitar WorldTides como backup
+            </label>
+          </div>
+          <div class="form-row" style="display: flex; gap: 15px;">
+            <div class="form-group" style="flex: 1;">
+              <label for="tide-wt-lat">Latitude</label>
+              <input type="number" id="tide-wt-lat" class="form-input" step="0.0001" placeholder="-14.7833" value="">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label for="tide-wt-lon">Longitude</label>
+              <input type="number" id="tide-wt-lon" class="form-input" step="0.0001" placeholder="-39.0333" value="">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="tide-wt-key">API Key WorldTides</label>
+            <input type="password" id="tide-wt-key" class="form-input" placeholder="Sua chave de API WorldTides">
+            <small style="color: rgba(255,255,255,0.5);">
+              Obtenha em <a href="https://www.worldtides.info" target="_blank" style="color: #6cf;">worldtides.info</a>
+            </small>
+          </div>
+        </details>
       </div>
       <div class="modal-footer">
         <button id="tide-modal-cancel" class="btn btn-secondary">Cancelar</button>

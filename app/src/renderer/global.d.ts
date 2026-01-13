@@ -117,6 +117,12 @@ interface TideConfig {
     risingIndicator: boolean;
     ledCount: number;
     neopixelPin: number;
+    worldTides?: {
+        enabled: boolean;
+        lat: number;
+        lon: number;
+        key: string;
+    };
 }
 
 interface ModuleConfig {

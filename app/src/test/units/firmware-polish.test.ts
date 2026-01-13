@@ -24,19 +24,25 @@ describe('Phase 5: Polish', () => {
             }
         }]);
 
-        expect(fw).toContain('SHARED_DATA[\'BRIGHTNESS\'] = bright');
+        expect(fw).toContain("SHARED_DATA['BRIGHTNESS']");
         expect(fw).toContain('import ADC');
         expect(fw).toContain('ldr_Ambient.read()');
+        expect(fw).toContain('Hysteresis');
     });
 
-    it('should inject Auto-Brightness check in NeoPixel loop', () => {
+    it('should inject Auto-Brightness check in NeoPixel loop when enabled', () => {
         const fw = gen([{
             id: 'led1', type: 'NEOPIXEL', name: 'MainStrip', pin: 15,
-            neoPixelConfig: { pixelCount: 16, brightness: 50, colorOrder: 'GRB', colorDepth: '24bit', defaultAnimation: 'NONE' }
+            neoPixelConfig: {
+                pixelCount: 16, brightness: 50, colorOrder: 'GRB',
+                colorDepth: '24bit', defaultAnimation: 'NONE',
+                autoBrightness: true
+            }
         }]);
 
-        expect(fw).toContain('if \'BRIGHTNESS\' in SHARED_DATA:');
-        expect(fw).toContain('TARGET_BRIGHTNESS_MainStrip = SHARED_DATA[\'BRIGHTNESS\'] / 255.0');
+        expect(fw).toContain('AUTO_BRIGHTNESS_MainStrip = True');
+        expect(fw).toContain('if AUTO_BRIGHTNESS_MainStrip and');
+        expect(fw).toContain('SHARED_DATA[\'BRIGHTNESS\']');
     });
 
     it('should support Multi-Strip (Multiple NeoPixel Modules)', () => {

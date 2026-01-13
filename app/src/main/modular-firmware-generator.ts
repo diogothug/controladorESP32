@@ -11,7 +11,7 @@ import * as path from 'path';
 interface ModuleSnippet {
     imports: string;
     globals: string;
-    commands: string;
+    commands: string | Record<string, { handler: string, description?: string }>;
     init: string;
     loop: string;
     caps: string[];
@@ -33,7 +33,6 @@ const MODULE_SNIPPETS: Record<string, (config: ModuleConfig, intent: FirmwareInt
     'ENCODER': generateEncoderSnippet,
     'PIR': generatePirSnippet,
     'LDR': generateLdrSnippet,
-    'MIC': generateMicSnippet,
     'WEB_SERVER': generateWebServerSnippet,
     'MQTT': generateMqttSnippet,
     'OTA': generateOtaSnippet,
@@ -45,7 +44,6 @@ const MODULE_SNIPPETS: Record<string, (config: ModuleConfig, intent: FirmwareInt
     'AUTOMATION': generateAutomationSnippet,
     'MODE': generateModeSnippet,
     'TELEMETRY': generateTelemetrySnippet,
-    'AUDIO': generateAudioSnippet,
 };
 
 // ============ ESP32 MicroPython Generator ============
@@ -70,7 +68,43 @@ export function generateModularMicroPython(intent: FirmwareIntent): string {
     // Combine all parts
     const imports = snippets.map(s => s.imports).filter(Boolean).join('\n');
     const globals = snippets.map(s => s.globals).filter(Boolean).join('\n');
-    const commands = snippets.map(s => s.commands).filter(Boolean).join('\n\n');
+
+    // Process commands (String or Object)
+    const commands = snippets.map(s => {
+        if (typeof s.commands === 'string') return s.commands;
+        if (typeof s.commands === 'object') {
+            return Object.entries(s.commands).map(([key, def]) => {
+                const keyParts = key.split(':').length;
+
+                // Smart Indent: Preserve relative indentation
+                // 1. Find min common indentation (ignoring empty lines)
+                const lines = def.handler.split('\n');
+                let minIndent = Infinity;
+                lines.forEach(line => {
+                    if (line.trim().length > 0) {
+                        const indent = line.search(/\S/);
+                        if (indent !== -1 && indent < minIndent) minIndent = indent;
+                    }
+                });
+                if (minIndent === Infinity) minIndent = 0;
+
+                // 2. Re-indent to 8 spaces
+                const handlerResult = lines.map(line => {
+                    if (line.trim().length === 0) return '';
+                    // Remove minIndent, add 8 spaces
+                    return '        ' + line.slice(minIndent);
+                }).join('\n');
+
+                return `    if cmd.startswith("${key}"):
+        parts = cmd.split(":")
+        args = parts[${keyParts}:] if len(parts) > ${keyParts} else []
+${handlerResult}
+        return True`;
+            }).join('\n');
+        }
+        return '';
+    }).filter(Boolean).join('\n\n');
+
     const init = snippets.map(s => s.init).filter(Boolean).join('\n');
     const loop = snippets.map(s => s.loop).filter(Boolean).join('\n');
     const caps = ['GPIO', ...snippets.flatMap(s => s.caps)];
@@ -429,6 +463,19 @@ def handle_command(cmd):
         print(f"OK:SYS:INFO:MEM={gc.mem_free()};MODULES={','.join(MODULES)}")
         return True
 
+    # ============ COMMAND HANDLERS ============
+
+def set_tide_level(level):
+    # Manual Override (Testing)
+    tide_physics["level_abs"] = level
+    tide_physics["timestamp"] = time.time()
+    tide_update_intelligence()
+
+def set_tide_direction(direction):
+    # Manual Override
+    tide_cycle["type"] = direction
+    SHARED_DATA["TIDE_DIR"] = direction
+
     # ============ VARIABLE COMMANDS ============
     if cmd.startswith("VAR:SET:"):
         # VAR:SET:KEY:VALUE
@@ -702,6 +749,7 @@ function generateNeopixelSnippet(config: ModuleConfig, intent: FirmwareIntent): 
     const pin = config.pin;
     const count = config.neoPixelConfig?.pixelCount || 64;
     const initialBright = (config.neoPixelConfig?.brightness || 12) / 100;
+    const autoBrightness = config.neoPixelConfig?.autoBrightness ? 'True' : 'False';
 
     // Priority: Intent Boot Config > Module Default > NONE
     let defaultAnim = 'NONE';
@@ -732,6 +780,7 @@ curr_bright_${name} = ${initialBright}
 TRANSITION_STEP_${name} = ${transitionStep}
 current_anim_${name} = "${defaultAnim}"
 anim_time_${name} = 0.0
+AUTO_BRIGHTNESS_${name} = ${autoBrightness}  # Auto-adjust via LDR sensor
 
 # Matrix Config
 NP_W_${name} = ${matrixWidth}
@@ -835,8 +884,8 @@ def apply_brightness_${name}(r, g, b):
 `,
         loop: `
     # === NEOPIXEL ${name} LOOP ===
-    # Auto-Brightness
-    if 'BRIGHTNESS' in SHARED_DATA:
+    # Auto-Brightness from LDR (if enabled)
+    if AUTO_BRIGHTNESS_${name} and 'BRIGHTNESS' in SHARED_DATA:
         TARGET_BRIGHTNESS_${name} = SHARED_DATA['BRIGHTNESS'] / 255.0
 
     # Smooth brightness transition
@@ -886,72 +935,185 @@ def apply_brightness_${name}(r, g, b):
         np_${name}.write()
 
     elif current_anim_${name} == "TIDE":
-        # Premium Tide Rendering
-        level = SHARED_DATA.get("TIDE", 50)
-        direction = SHARED_DATA.get("TIDE_DIR", "rising")
+        # ============ TIDE (Complete Visual Language) ============
+        # --- Global State Injection ---
+        if 'tide_globals_init_${name}' not in globals():
+            global tide_globals_init_${name}, flow_offset_${name}, ambient_next_${name}, ambient_events_${name}
+            tide_globals_init_${name} = True
+            flow_offset_${name} = 0.0
+            ambient_next_${name} = now_ms + 5000  # Initial delay
+            ambient_events_${name} = []  # List of event dicts
         
-        tide_phase = (now_ms % 8000) / 8000.0 * 2 * math.pi
-        water_rows = int(NP_H_${name} * level / 100)
+        # --- Constants & Config ---
+        INSTRUMENT_MODE = "DEBUG"  # "PROD" or "DEBUG"
         
-        # Preamar (High)
-        if level >= 95:
-            wave_phase = (now_ms % 6000) / 6000.0 * 2 * math.pi
-            for y in range(NP_H_${name}):
-                for x in range(NP_W_${name}):
-                    idx = y * NP_W_${name} + x
-                    if idx >= ${count}: continue
-                    wave = 0.8 + 0.2 * math.sin(wave_phase + x * 0.6)
-                    r = int(TIDE_COLOR_PREAMAR[0] * wave)
-                    g = int(TIDE_COLOR_PREAMAR[1] * wave)
-                    b = min(255, int(TIDE_COLOR_PREAMAR[2] * (wave + 0.1)))
-                    np_${name}[idx] = apply_brightness_${name}(r,g,b)
-
-        # Baixamar (Low)
-        elif level <= 10:
-            pulse_phase = (now_ms % 4000) / 4000.0 * 2 * math.pi
-            pulse = 0.3 + 0.7 * (0.5 + 0.5 * math.sin(pulse_phase))
-            lit_rows = max(1, int(NP_H_${name} * level / 100))
-            for y in range(NP_H_${name}):
-                for x in range(NP_W_${name}):
-                    idx = y * NP_W_${name} + x
-                    if idx >= ${count}: continue
-                    if y < lit_rows:
-                        c = scale_color(TIDE_COLOR_LOW, pulse * 0.6)
-                        np_${name}[idx] = apply_brightness_${name}(*c)
-                    else:
-                        np_${name}[idx] = (0,0,0)
-        
-        # Normal Tide
+        # Timings (ms)
+        if INSTRUMENT_MODE == "DEBUG":
+            INTERVAL_BUBBLE = (5000, 10000)
+            INTERVAL_FISH = (15000, 30000)
         else:
-            for y in range(NP_H_${name}):
-                for x in range(NP_W_${name}):
-                    idx = y * NP_W_${name} + x
-                    if idx >= ${count}: continue
+            INTERVAL_BUBBLE = (300000, 600000)   # 5-10 min
+            INTERVAL_FISH = (900000, 1800000)    # 15-30 min
+        
+        # Data
+        level = SHARED_DATA.get("TIDE", 50)
+        direction = SHARED_DATA.get("TIDE_DIR", "steady")  # rising, falling, steady
+        water_rows = max(1, int(NP_H_${name} * level / 100))
+        
+        # --- 1. AMBIENT MANAGER ---
+        # Hard lock: Only schedule if empty
+        if len(ambient_events_${name}) == 0:
+            if now_ms >= ambient_next_${name}:
+                # Roll dice
+                roll = random.randint(0, 100)
+                new_event = None
+                
+                # FISH RULES:
+                # - No Fish if Steady
+                # - No Fish if water_rows < 6
+                can_spawn_fish = (direction != "steady") and (water_rows >= 6)
+                
+                if roll < 25: # Bubble (25%)
+                    x_pos = random.randint(0, NP_W_${name}-1)
+                    new_event = {
+                        "type": "BUBBLE",
+                        "x": x_pos,
+                        "y": 0.0,
+                        "speed": random.uniform(0.05, 0.15)
+                    }
+                    # Schedule next
+                    ambient_next_${name} = now_ms + random.randint(*INTERVAL_BUBBLE)
                     
-                    if y < water_rows:
-                        color = get_tide_depth_color(level, y, water_rows)
-                        if direction == "rising":
-                            wave = math.sin(tide_phase - y * 0.8)
-                        elif direction == "falling":
-                            wave = math.sin(tide_phase + y * 0.8)
-                        else:
-                            wave = math.sin(tide_phase * 0.3 + x * 0.5)
-                        
-                        b_wave = 0.4 + 0.6 * (0.5 + 0.5 * wave)
-                        color = scale_color(color, b_wave)
-                        
-                        if wave > 0.6:
-                            peak = (wave - 0.6) / 0.4
-                            color = (min(255, color[0] + int(40*peak)), 
-                                     min(255, color[1] + int(60*peak)), 
-                                     min(255, color[2] + int(80*peak)))
-                        np_${name}[idx] = apply_brightness_${name}(*color)
+                elif roll < 30 and can_spawn_fish: # Fish (5% - rare)
+                    # Spec: "Peixinho" - Visual Contract
+                    # Loc: y = random(2, water_rows - 3)
+                    # Range: Max 2-3 cols
+                    start_y = random.randint(2, water_rows - 3)
+                    
+                    # Direction: Left(-1) or Right(1)
+                    fish_dir = 1 if random.randint(0, 1) == 1 else -1
+                    
+                    # Start X: Ensure travel space
+                    travel_dist = random.randint(2, 3) 
+                    if fish_dir == 1:
+                        start_x = random.randint(0, NP_W_${name} - 1 - travel_dist)
                     else:
-                        c = scale_color(TIDE_COLOR_DEEP, 0.02)
-                        np_${name}[idx] = apply_brightness_${name}(*c)
+                        start_x = random.randint(travel_dist, NP_W_${name} - 1)
+                        
+                    new_event = {
+                        "type": "FISH",
+                        "x": float(start_x),
+                        "y": start_y,
+                        "start_x": start_x,
+                        "dir": fish_dir,
+                        "dist": 0.0,
+                        "max_dist": float(travel_dist),
+                        "speed": 0.025 # Constant speed (~1 col / 640ms)
+                    }
+                    ambient_next_${name} = now_ms + random.randint(*INTERVAL_FISH)
+                
+                else:
+                    # Nothing (70%) - just wait a bit
+                    ambient_next_${name} = now_ms + 5000
+
+                if new_event:
+                    ambient_events_${name}.append(new_event)
+        
+        # --- 2. TREND UPDATE ---
+        if direction == "rising":
+            flow_offset_${name} -= 0.05  # Upwards
+        elif direction == "falling":
+            flow_offset_${name} += 0.05  # Downwards
+        # steady = freeze
+        
+        # --- LOGIC UPDATE (Events) ---
+        active_evts = []
+        for evt in ambient_events_${name}:
+            keep = True
+            if evt["type"] == "BUBBLE":
+                evt["y"] += evt["speed"]
+                if evt["y"] >= (water_rows - 2): # Pop before surface
+                    keep = False
+            elif evt["type"] == "FISH":
+                # Constant speed, no easing (Use value from event)
+                move = evt["speed"]
+                evt["dist"] += move
+                evt["x"] += move * evt["dir"]
+                if evt["dist"] >= evt["max_dist"]:
+                    # Cut clean, no fade
+                    keep = False
+            
+            if keep:
+                active_evts.append(evt)
+        ambient_events_${name} = active_evts
+
+        # --- DRAWING ---
+        for y in range(NP_H_${name}):
+            is_water = y < water_rows
+            
+            for x in range(NP_W_${name}):
+                idx = y * NP_W_${name} + x
+                if idx >= ${count}: continue
+                
+                if not is_water:
+                    np_${name}[idx] = (0,0,0)
+                    continue
+                
+                # 1. BASE
+                c = get_tide_depth_color(level, y, water_rows)
+                
+                # 2. TREND
+                # "O fluxo nao representa velocidade absoluta, apenas direcao"
+                if direction != "steady":
+                    theta = (y * 0.5) + flow_offset_${name}
+                    wave = (math.sin(theta) + 1) * 0.5
+                    # Gentle boost +10-20%
+                    flow_boost = 1.0 + (wave * 0.15)
+                    c = scale_color(c, flow_boost)
+                
+                # 3. AMBIENT
+                # "Implemente o peixinho como se estivesse tentando esconde-lo"
+                for evt in ambient_events_${name}:
+                    if evt["type"] == "BUBBLE":
+                        if int(evt["x"]) == x and int(evt["y"]) == y:
+                            # Subtle additive blend
+                            c = (min(255, c[0]+40), min(255, c[1]+60), min(255, c[2]+80))
+                    
+                    elif evt["type"] == "FISH":
+                        # Spec: 2 pixels horizontal (Head + Tail)
+                        # Head at int(x), Tail at int(x) - dir
+                        ex_int = int(evt["x"])
+                        ey = int(evt["y"])
+                        
+                        is_head = (x == ex_int and y == ey)
+                        is_tail = (x == (ex_int - evt["dir"]) and y == ey)
+                        
+                        if is_head or is_tail:
+                            # Spec Color: Base * 1.12, Green +5% of Base
+                            # Logic: Slightly brighter, slight shift to cyan/green
+                            # We use simple integer math for speed
+                            
+                            # Base brightness boost (12%)
+                            r = min(255, int(c[0] * 1.12))
+                            g = min(255, int(c[1] * 1.12))
+                            b = min(255, int(c[2] * 1.12))
+                            
+                            # Green shift (+5% of original green)
+                            g = min(255, int(g + c[1] * 0.05))
+                            
+                            # Blend: Lerp with 0.25 alpha (Subtle!)
+                            # final = lerp(c, fish_c, 0.25)
+                            # final = c * 0.75 + fish_c * 0.25
+                            
+                            # Since we calculated 'fish_c' (r,g,b) derived from c,
+                            # and we want a subtle effect, we can just apply the result directly
+                            # because the result IS the subtle shift.
+                            # So we just use r,g,b calculated above.
+                            c = (r, g, b)
+                
+                np_${name}[idx] = apply_brightness_${name}(*c)
         
         np_${name}.write()
-
 
     elif current_anim_${name} == "TIDE_SIMPLE":
         # Simple Bar Chart
@@ -965,65 +1127,6 @@ def apply_brightness_${name}(r, g, b):
                 idx = y * NP_W_${name} + x
                 if idx >= ${count}: continue
                 np_${name}[idx] = c_water if y < water_rows else c_empty
-        np_${name}.write()
-
-    elif current_anim_${name} == "TIDE_WAVE":
-        # Dynamic Wave (Physics based)
-        level = SHARED_DATA.get("TIDE", 50)
-        tide_phase = (now_ms % 2000) / 2000.0 * 2 * math.pi
-        water_rows = int(NP_H_${name} * level / 100)
-        
-        for y in range(NP_H_${name}):
-            for x in range(NP_W_${name}):
-                idx = y * NP_W_${name} + x
-                if idx >= ${count}: continue
-                
-                # Wave height varies by X
-                wave_h = math.sin(tide_phase + x * 0.5) * 1.5
-                effective_h = water_rows + wave_h
-                
-                if y < effective_h:
-                    depth_f = y / max(1, effective_h)
-                    c = scale_color(TIDE_COLOR_HIGH, 0.5 + 0.5*depth_f)
-                    np_${name}[idx] = apply_brightness_${name}(*c)
-                else:
-                    np_${name}[idx] = (0,0,0)
-        np_${name}.write()
-
-    elif current_anim_${name} == "TIDE_AURORA":
-        # Borealis effect masked by Tide
-        level = SHARED_DATA.get("TIDE", 50)
-        water_rows = int(NP_H_${name} * level / 100)
-        phase = (now_ms % 5000) / 5000.0 * 255
-        phase_low = int(now_ms / 20) % 255
-        
-        for y in range(NP_H_${name}):
-            if y >= water_rows:
-                # Top is black/sky
-                for x in range(NP_W_${name}):
-                    idx = y * NP_W_${name} + x
-                    if idx < ${count}: np_${name}[idx] = (0,0,0)
-                continue
-                
-            # Water reflects Aurora
-            for x in range(NP_W_${name}):
-                idx = y * NP_W_${name} + x
-                if idx >= ${count}: continue
-                
-                # Plasma-ish color
-                idx_p = int(x * 10 + y * 10 + phase_low) & 255
-                w1 = sin8(idx_p)
-                w2 = cos8((idx_p + 50) & 255)
-                color_idx = (w1 + w2) // 2
-                
-                # Ocean Palette + Greenish tint
-                base = color_from_palette(PALETTE_OCEAN, color_idx)
-                # Mix with Green (Aurora)
-                aurora = (0, 255, 100)
-                mist = 0.3 * (y / max(1, water_rows))
-                
-                final_c = lerp_color(base, aurora, mist)
-                np_${name}[idx] = apply_brightness_${name}(*final_c)
         np_${name}.write()
 
     elif current_anim_${name} == "CUSTOM":
@@ -1323,94 +1426,86 @@ function generateLdrSnippet(config: ModuleConfig): ModuleSnippet {
     const minBright = config.ldrConfig?.minBrightness || 10;
     const maxBright = config.ldrConfig?.maxBrightness || 255;
 
+    // Hysteresis and smoothing parameters
+    const hysteresis = config.ldrConfig?.hysteresis || 15;  // Min change to trigger update
+    const smoothingFactor = config.ldrConfig?.smoothing || 0.2;  // EMA alpha (0.1-0.5)
+    const delayMs = config.ldrConfig?.delayMs || 2000;  // Delay before applying (2s default)
+    const stableCount = config.ldrConfig?.stableReadings || 3;  // Required stable readings
+
     return {
         imports: 'from machine import ADC',
         globals: `
-# LDR ${name}
+# LDR ${name} with Hysteresis & Smoothing
 ldr_${name} = ADC(machine.Pin(${pin}))
 ldr_${name}.atten(ADC.ATTN_11DB)
-ldr_${name}_last = 0
-ldr_${name}_val = 0
-ldr_${name}_sent = 0
+ldr_${name}_last_read = 0          # Last read timestamp
+ldr_${name}_smooth = 0.0           # EMA smoothed value
+ldr_${name}_stable_count = 0       # Consecutive stable readings
+ldr_${name}_pending_bright = 0     # Pending brightness value
+ldr_${name}_pending_since = 0      # When pending started
+ldr_${name}_current_bright = ${minBright}  # Currently applied brightness
+ldr_${name}_sent = 0               # Last sent event value
+
+# Constants
+LDR_${name}_HYSTERESIS = ${hysteresis}
+LDR_${name}_SMOOTHING = ${smoothingFactor}
+LDR_${name}_DELAY = ${delayMs}
+LDR_${name}_STABLE_COUNT = ${stableCount}
 `,
         commands: `    if cmd == "LDR:${name}:READ":
         print(f"OK:LDR:${name}:{ldr_${name}.read()}")
+        return True
+    if cmd == "LDR:${name}:STATUS":
+        print(f"OK:LDR:${name}:SMOOTH:{int(ldr_${name}_smooth)}:PENDING:{ldr_${name}_pending_bright}:CURRENT:{ldr_${name}_current_bright}")
         return True`,
-        init: '',
+        init: `
+    # Initialize LDR smoothed value
+    ldr_${name}_smooth = float(ldr_${name}.read())
+`,
         loop: `
-    # LDR Update
-    if time.ticks_diff(time.ticks_ms(), ldr_${name}_last) > ${interval}:
-        ldr_${name}_last = time.ticks_ms()
+    # ============ LDR ${name} Update (Hysteresis + Delay) ============
+    if time.ticks_diff(time.ticks_ms(), ldr_${name}_last_read) > ${interval}:
+        ldr_${name}_last_read = time.ticks_ms()
         raw = ldr_${name}.read()
-        # Map raw ${minRead}-${maxRead} to ${minBright}-${maxBright}
-        val = max(${minRead}, min(${maxRead}, raw))
+        
+        # EMA Smoothing: new = alpha * raw + (1-alpha) * old
+        ldr_${name}_smooth = LDR_${name}_SMOOTHING * raw + (1 - LDR_${name}_SMOOTHING) * ldr_${name}_smooth
+        
+        # Map smoothed value to brightness range
+        val = max(${minRead}, min(${maxRead}, int(ldr_${name}_smooth)))
         norm = (val - ${minRead}) / (${maxRead} - ${minRead})
-        bright = int(${minBright} + norm * (${maxBright} - ${minBright}))
-        SHARED_DATA['BRIGHTNESS'] = bright
-        if abs(bright - ldr_${name}_sent) > 5:
-            ldr_${name}_sent = bright
-            dispatch_event(f"LDR:${name}:CHANGE:{bright}")
+        target_bright = int(${minBright} + norm * (${maxBright} - ${minBright}))
+        
+        # Check if change exceeds hysteresis threshold
+        if abs(target_bright - ldr_${name}_pending_bright) > LDR_${name}_HYSTERESIS:
+            # New target detected - start counting stable readings
+            ldr_${name}_pending_bright = target_bright
+            ldr_${name}_stable_count = 1
+            ldr_${name}_pending_since = time.ticks_ms()
+        elif abs(target_bright - ldr_${name}_pending_bright) <= 5:
+            # Reading is stable (within 5 of pending)
+            ldr_${name}_stable_count += 1
+        else:
+            # Unstable reading - reset counter
+            ldr_${name}_stable_count = 0
+    
+    # Apply pending brightness after delay AND stable readings
+    if ldr_${name}_pending_bright != ldr_${name}_current_bright:
+        elapsed = time.ticks_diff(time.ticks_ms(), ldr_${name}_pending_since)
+        if elapsed > LDR_${name}_DELAY and ldr_${name}_stable_count >= LDR_${name}_STABLE_COUNT:
+            ldr_${name}_current_bright = ldr_${name}_pending_bright
+            SHARED_DATA['BRIGHTNESS'] = ldr_${name}_current_bright
+            
+            # Only dispatch event if significant change
+            if abs(ldr_${name}_current_bright - ldr_${name}_sent) > 5:
+                ldr_${name}_sent = ldr_${name}_current_bright
+                dispatch_event(f"LDR:${name}:CHANGE:{ldr_${name}_current_bright}")
 `,
         caps: ['LDR']
     };
 }
 
-function generateMicSnippet(config: ModuleConfig): ModuleSnippet {
-    const name = config.name.replace(/[^a-zA-Z0-9]/g, '_');
-    const pin = config.pin || 35;
-    const threshold = config.options?.threshold || 2500;
-    const sampleCount = config.options?.samples || 32;
-
-    return {
-        imports: '',
-        globals: `# Microphone ${name}
-mic_${name} = machine.ADC(machine.Pin(${pin}))
-mic_${name}.atten(machine.ADC.ATTN_11DB)
-mic_${name} _peak = 0
-mic_${name} _triggered = False`,
-        commands: `    if cmd == "MIC:${name}:READ":
-        # Sample and get peak - to - peak
-min_val = 4095
-max_val = 0
-for _ in range(${sampleCount}):
-    val = mic_${name}.read()
-if val < min_val:
-    min_val = val
-if val > max_val:
-    max_val = val
-pp = max_val - min_val
-print(f"OK:MIC:${name}:{pp}:{min_val}:{max_val}")
-return True
-
-if cmd == "MIC:${name}:LEVEL":
-        # Get current RMS - like level
-total = 0
-for _ in range(${sampleCount}):
-    val = mic_${name}.read() - 2048
-total += val * val
-rms = int((total / ${sampleCount}) ** 0.5)
-print(f"OK:MIC:${name}:LEVEL:{rms}")
-return True
-
-if cmd == "MIC:${name}:PEAK":
-    print(f"OK:MIC:${name}:PEAK:{mic_${name}_peak}")
-        mic_${name} _peak = 0
-return True`,
-        init: '',
-        loop: `# Mic ${name} peak detection
-mic_val = mic_${name}.read()
-if mic_val > mic_${name} _peak:
-    mic_${name} _peak = mic_val
-if mic_val > ${threshold} and not mic_${name} _triggered:
-    mic_${name} _triggered = True
-    dispatch_event(f"MIC:${name}:LOUD:{mic_val}")
-elif mic_val < ${threshold - 500}:
-    mic_${name} _triggered = False`,
-        caps: ['MIC', 'INPUT', 'SOUND', 'ADC']
-    };
-}
-
-// ============ Recovery Firmware// === WIFI MODULE ===
+// === WIFI MODULE ===
 function generateWifiSnippet(config: ModuleConfig): ModuleSnippet {
     return {
         imports: 'import network\nimport socket\nimport struct\nimport binascii\nimport hashlib',
@@ -1796,76 +1891,658 @@ function generateTideSnippet(config: ModuleConfig): ModuleSnippet {
         updateInterval: 30,
         highTideColor: '#50B4C8',
         lowTideColor: '#00283C',
+        risingIndicator: true,
+        ledCount: 8,
+        neopixelPin: 2,
+        worldTides: undefined
     };
 
     const harborId = tideConfig.harborId;
     const updateInterval = tideConfig.updateInterval * 60;
 
+    // Build WorldTides config string if enabled
+    const wt = tideConfig.worldTides;
+    const worldTidesEntry = wt?.enabled && wt?.key
+        ? `{"name": "WorldTides", "base": "https://www.worldtides.info/api/v3", "type": "worldtides", "lat": ${wt.lat || -14.78}, "lon": ${wt.lon || -39.03}, "key": "${wt.key}"}`
+        : `{"name": "WorldTides", "base": "https://www.worldtides.info/api/v3", "type": "worldtides"}`;
+
     return {
         imports: `import urequests
 import json
-import math`,
-        globals: `# ============ TIDE INTELLIGENCE SYSTEM ============
-# Apple-style: It just works. Silent fallback, smart cache, learning prediction.
+import math
+import time
+import nvs`,
+        globals: `# ============ 🌊 TIDE ENGINE 2.0 (PREMIUM) ============
+# Architecture: 3 Layers (Physics -> Intelligence -> Visual)
 
 # Configuration
 TIDE_HARBOR_ID = ${harborId}
 TIDE_UPDATE_INTERVAL = ${updateInterval}
-TIDE_PROACTIVE_SYNC = ${Math.floor(updateInterval * 0.8)}  # Sync before expiry
 
-# API Endpoints (fallback chain)
+# API Endpoints
 TIDE_APIS = [
-    {"name": "API1", "base": "https://tabuamare.devtu.qzz.io/api/v1", "type": "tabuamare"},
-    {"name": "API2", "base": "https://www.worldtides.info/api/v3", "type": "worldtides"},
+    {"name": "TabuaMare", "base": "https://tabuamare.devtu.qzz.io/api/v1", "type": "tabuamare"},
+    ${worldTidesEntry},
 ]
 
-# Tide Intelligence State
-tide_data = {
-    "level": 50,
-    "direction": "stable",
-    "confidence": 50,
-    "source": "INIT",
-    "next_event": {"type": "unknown", "time": "", "level": 0},
-    "last_high": {"timestamp": 0, "level": 1.5},
-    "last_low": {"timestamp": 0, "level": 0.5},
-    "last_sync": 0,
-    "history": []
+# 🔹 LAYER 1: PHYSICS (The Truth)
+# Stores raw data from API. Never modified for aesthetics.
+tide_physics = {
+    "level_abs": 0.0,       # Current height in meters
+    "timestamp": 0,         # Last update time
+    "extremas": [],         # List of dicts: {"time": t, "level": h, "type": "high"/"low"}
+    "confidence": 0         # 0-100%
 }
 
-tide_enabled = True
+# 🔹 LAYER 2: INTELLIGENCE (The Brain)
+# Understands the context (Active Cycle)
+tide_cycle = {
+    "valid": False,
+    "min_level": 0.0,
+    "max_level": 1.0, 
+    "t_start": 0,
+    "t_end": 0,
+    "type": "rising",       # "rising" or "falling"
+    "pos_norm": 0.5,        # 0.0 to 1.0 (internal position)
+    "plateau": False        # True if at peak/valley
+}
+
+# 🔹 LAYER 3: VISUAL (The Beauty)
+# Rendering state (Crossfading, Halo, Breathing)
+tide_visual = {
+    "led_float": 15.0,      # Float index (e.g., 15.4)
+    "halo_intensity": 0.0,
+    "breath_phase": 0.0
+}
+
+# 🔹 LAYER 0: CORE SYSTEM (The Foundation)
+# Production-grade firmware architecture
+# Philosophy: "Firmware invisível é firmware bem feito"
+
+# ============ SYSTEM STATE MACHINE ============
+# States with clear semantics - no loose ifs
+class SystemState:
+    BOOT = 0                    # First 3 seconds
+    NORMAL = 1                  # Everything working
+    DEGRADED_NO_WIFI = 2        # No WiFi, using cache
+    DEGRADED_TIME_UNCERTAIN = 3 # Time source unreliable
+    RECOVERING = 4              # Attempting reconnection
+    ERROR_SAFE = 5              # Fallback safe mode
+
+system = {
+    "state": SystemState.BOOT,
+    "prev_state": SystemState.BOOT,
+    "state_since": 0,
+    "boot_complete": False,
+    "last_good_level": 50,      # Always keep last known good value
+    "freeze_display": False
+}
+
+# Valid state transitions (defensive programming)
+VALID_TRANSITIONS = {
+    SystemState.BOOT: [SystemState.NORMAL, SystemState.DEGRADED_NO_WIFI, SystemState.ERROR_SAFE],
+    SystemState.NORMAL: [SystemState.DEGRADED_NO_WIFI, SystemState.DEGRADED_TIME_UNCERTAIN, SystemState.ERROR_SAFE],
+    SystemState.DEGRADED_NO_WIFI: [SystemState.NORMAL, SystemState.DEGRADED_TIME_UNCERTAIN, SystemState.RECOVERING, SystemState.ERROR_SAFE],
+    SystemState.DEGRADED_TIME_UNCERTAIN: [SystemState.NORMAL, SystemState.DEGRADED_NO_WIFI, SystemState.ERROR_SAFE],
+    SystemState.RECOVERING: [SystemState.NORMAL, SystemState.DEGRADED_NO_WIFI, SystemState.ERROR_SAFE],
+    SystemState.ERROR_SAFE: [SystemState.RECOVERING]  # Can only try to recover
+}
+
+def state_transition(new_state, now_ms):
+    \"\"\"Safe state transition with validation.\"\"\"
+    global system
+    current = system["state"]
+    
+    if new_state == current:
+        return True  # Already in state
+    
+    if new_state in VALID_TRANSITIONS.get(current, []):
+        system["prev_state"] = current
+        system["state"] = new_state
+        system["state_since"] = now_ms
+        log_event("STATE", f"{current}->{new_state}")
+        return True
+    
+    log_event("STATE_ERR", f"Invalid {current}->{new_state}")
+    return False
+
+# ============ TIME MANAGEMENT ============
+# Priority: NTP > RTC > millis > flash
+class TimeSource:
+    NTP = 0
+    RTC = 1
+    MILLIS = 2
+    FLASH = 3
+    UNKNOWN = 4
+
+time_state = {
+    "valid": False,
+    "source": TimeSource.UNKNOWN,
+    "epoch": 0,                 # Current epoch time
+    "last_valid_epoch": 0,      # Last known good time
+    "last_sync": 0,             # When last synced
+    "drift_estimate": 0,        # Estimated drift in ms/hour
+    "uncertainty_ms": 0         # How uncertain we are
+}
+
+def time_update_source(epoch, source, now_ms):
+    \"\"\"Update time from a source with priority handling.\"\"\"
+    global time_state
+    
+    # Only accept if better source or same source with newer data
+    if source <= time_state["source"] or not time_state["valid"]:
+        time_state["epoch"] = epoch
+        time_state["source"] = source
+        time_state["valid"] = True
+        time_state["last_valid_epoch"] = epoch
+        time_state["last_sync"] = now_ms
+        time_state["uncertainty_ms"] = 0 if source == TimeSource.NTP else 60000
+        
+        # Persist to flash
+        persist_save("time", {"epoch": epoch, "ms": now_ms})
+        return True
+    return False
+
+def time_get_current():
+    \"\"\"Get current time with uncertainty tracking.\"\"\"
+    global time_state
+    
+    if not time_state["valid"]:
+        # Try to load from flash
+        saved = persist_load("time")
+        if saved:
+            time_state["epoch"] = saved.get("epoch", 0)
+            time_state["source"] = TimeSource.FLASH
+            time_state["valid"] = True
+            time_state["uncertainty_ms"] = 3600000  # 1 hour uncertainty
+    
+    # Increase uncertainty over time
+    if time_state["valid"]:
+        elapsed = time.ticks_ms() - time_state["last_sync"]
+        time_state["uncertainty_ms"] += elapsed // 3600  # 1ms per second drift
+        
+        # If uncertainty too high, mark as uncertain
+        if time_state["uncertainty_ms"] > 1800000:  # 30 min
+            state_transition(SystemState.DEGRADED_TIME_UNCERTAIN, time.ticks_ms())
+    
+    return time_state["epoch"], time_state["uncertainty_ms"]
+
+# ============ WATCHDOGS ============
+# Layer 1: Main loop (8s hard reset)
+# Layer 2: Display calc (500ms soft fallback)
+# Layer 3: Persistence (30s debounce)
+
+_wdt_main = None
+_wdt_display_deadline = 0
+_wdt_persist_last = 0
+WDT_PERSIST_DEBOUNCE = 30000  # 30 seconds
+
+def wdt_init():
+    \"\"\"Initialize watchdog timers.\"\"\"
+    global _wdt_main
+    try:
+        from machine import WDT
+        _wdt_main = WDT(timeout=8000)  # 8 second hardware watchdog
+    except:
+        pass
+
+def wdt_feed():
+    \"\"\"Feed main watchdog - call in main loop.\"\"\"
+    if _wdt_main:
+        _wdt_main.feed()
+
+def wdt_display_start():
+    \"\"\"Mark display calculation start.\"\"\"
+    global _wdt_display_deadline
+    _wdt_display_deadline = time.ticks_ms() + 500
+
+def wdt_display_check():
+    \"\"\"Check if display calculation took too long.\"\"\"
+    if time.ticks_ms() > _wdt_display_deadline:
+        log_event("WDT", "Display calc timeout - using last value")
+        return False
+    return True
+
+def wdt_can_persist():
+    \"\"\"Check if enough time passed for persistence.\"\"\"
+    global _wdt_persist_last
+    now = time.ticks_ms()
+    if now - _wdt_persist_last > WDT_PERSIST_DEBOUNCE:
+        _wdt_persist_last = now
+        return True
+    return False
+
+# ============ DUAL-SLOT PERSISTENCE ============
+# Anti-corruption: never write in place
+# Slot A/B with CRC verification
+
+_persist_active_slot = "A"
+
+def persist_crc(data):
+    \"\"\"Simple CRC for data integrity.\"\"\"
+    crc = 0
+    for byte in str(data).encode():
+        crc = (crc + byte) & 0xFFFF
+    return crc
+
+def persist_save(key, data):
+    \"\"\"Save data with dual-slot anti-corruption.\"\"\"
+    global _persist_active_slot
+    
+    if not wdt_can_persist():
+        return False
+    
+    try:
+        # Determine inactive slot
+        inactive = "B" if _persist_active_slot == "A" else "A"
+        slot_key = f"{key}_{inactive}"
+        
+        # Prepare data with version and CRC
+        payload = {
+            "v": 1,
+            "data": data,
+            "crc": persist_crc(data),
+            "ts": time.time()
+        }
+        
+        # Write to inactive slot
+        nvs.set_str(slot_key, json.dumps(payload))
+        
+        # Verify CRC
+        readback = json.loads(nvs.get_str(slot_key))
+        if readback.get("crc") != persist_crc(readback.get("data")):
+            log_event("PERSIST", f"CRC fail on {slot_key}")
+            return False
+        
+        # Mark as active
+        nvs.set_str(f"{key}_active", inactive)
+        _persist_active_slot = inactive
+        return True
+        
+    except Exception as e:
+        log_event("PERSIST_ERR", str(e))
+        return False
+
+def persist_load(key):
+    \"\"\"Load data from best available slot.\"\"\"
+    global _persist_active_slot
+    
+    try:
+        # Get active slot
+        active = nvs.get_str(f"{key}_active")
+        if not active:
+            active = "A"
+        _persist_active_slot = active
+        
+        # Try active slot first
+        slot_key = f"{key}_{active}"
+        data_str = nvs.get_str(slot_key)
+        if data_str:
+            payload = json.loads(data_str)
+            if payload.get("crc") == persist_crc(payload.get("data")):
+                return payload.get("data")
+            log_event("PERSIST", f"CRC fail, trying backup")
+        
+        # Try backup slot
+        backup = "B" if active == "A" else "A"
+        data_str = nvs.get_str(f"{key}_{backup}")
+        if data_str:
+            payload = json.loads(data_str)
+            if payload.get("crc") == persist_crc(payload.get("data")):
+                return payload.get("data")
+        
+        return None
+        
+    except:
+        return None
+
+# ============ BOOT SEQUENCE (3 seconds) ============
+# 0-500ms: LEDs off, silent self-test
+# 500-1000ms: Verify RAM, Flash CRC, Config
+# 1000-2000ms: Load last known state
+# 2000-3000ms: Elegant animation -> show tide
+
+_boot_start = 0
+_boot_phase = 0
+_boot_tests = {}
+
+def boot_init():
+    \"\"\"Initialize boot sequence.\"\"\"
+    global _boot_start, _boot_phase
+    _boot_start = time.ticks_ms()
+    _boot_phase = 0
+
+def boot_tick(now_ms, leds):
+    \"\"\"Execute boot sequence. Returns True when complete.\"\"\"
+    global _boot_phase, _boot_tests, system
+    
+    elapsed = now_ms - _boot_start
+    
+    # Phase 0: LEDs off, silent self-test (0-500ms)
+    if elapsed < 500:
+        if _boot_phase == 0:
+            for i in range(len(leds)):
+                leds[i] = (0, 0, 0)
+            _boot_phase = 1
+            _boot_tests = {
+                "config": validate_config(),
+                "nvs": test_nvs_access()
+            }
+        return False
+    
+    # Phase 1: Verify integrity (500-1000ms)
+    elif elapsed < 1000:
+        if _boot_phase == 1:
+            _boot_phase = 2
+        return False
+    
+    # Phase 2: Load last state (1000-2000ms)
+    elif elapsed < 2000:
+        if _boot_phase == 2:
+            _boot_phase = 3
+            # Load last known good state
+            saved = persist_load("tide_state")
+            if saved:
+                system["last_good_level"] = saved.get("level", 50)
+                tide_physics["level_abs"] = saved.get("level_abs", 0)
+        return False
+    
+    # Phase 3: Boot animation (2000-3000ms)
+    elif elapsed < 3000:
+        if _boot_phase == 3:
+            _boot_phase = 4
+            # Elegant fade-in animation
+            progress = (elapsed - 2000) / 1000.0
+            for i in range(len(leds)):
+                leds[i] = (int(5 * progress), int(15 * progress), int(25 * progress))
+        return False
+    
+    # Boot complete
+    system["boot_complete"] = True
+    
+    # Determine initial state
+    if all(_boot_tests.values()):
+        state_transition(SystemState.NORMAL, now_ms)
+    else:
+        state_transition(SystemState.ERROR_SAFE, now_ms)
+    
+    return True
+
+def validate_config():
+    \"\"\"Validate configuration integrity.\"\"\"
+    try:
+        # Check essential config exists
+        return TIDE_HARBOR_ID > 0
+    except:
+        return False
+
+def test_nvs_access():
+    \"\"\"Test NVS read/write capability.\"\"\"
+    try:
+        nvs.set_str("_test", "ok")
+        return nvs.get_str("_test") == "ok"
+    except:
+        return False
+
+# ============ SAFE TIDE CALCULATION ============
+# Rule: "Better to show last good value than a new wrong one"
+
+def safe_tide_level():
+    \"\"\"Get tide level with safety guarantees.\"\"\"
+    global system
+    
+    wdt_display_start()
+    
+    try:
+        # If frozen, return last good
+        if system["freeze_display"]:
+            return system["last_good_level"]
+        
+        # If cycle not valid, freeze
+        if not tide_cycle["valid"]:
+            system["freeze_display"] = True
+            log_event("TIDE", "Cycle invalid - freezing")
+            return system["last_good_level"]
+        
+        # Never extrapolate outside known interval
+        now_min = time.time() // 60
+        if tide_cycle["t_start"] > 0 and tide_cycle["t_end"] > 0:
+            if now_min < tide_cycle["t_start"] or now_min > tide_cycle["t_end"]:
+                log_event("TIDE", "Outside interval - using last good")
+                return system["last_good_level"]
+        
+        # Safe to calculate
+        level = tide_calculate_harmonic()
+        
+        if wdt_display_check():
+            system["last_good_level"] = level
+            if wdt_can_persist():
+                persist_save("tide_state", {"level": level, "level_abs": tide_physics["level_abs"]})
+            return level
+        else:
+            return system["last_good_level"]
+            
+    except Exception as e:
+        log_event("TIDE_ERR", str(e))
+        return system["last_good_level"]
+
+# ============ MINIMAL LOGGING ============
+# Only essential events, compact format
+
+_event_log = []  # Circular buffer, max 10 entries
+
+def log_event(event_type, message):
+    \"\"\"Log minimal event for debugging.\"\"\"
+    global _event_log
+    entry = {"t": time.time(), "e": event_type, "m": message[:50]}
+    _event_log.append(entry)
+    if len(_event_log) > 10:
+        _event_log.pop(0)
+
+def log_get_last():
+    \"\"\"Get last logged events.\"\"\"
+    return _event_log
+
+# ============ FRAME TIMING (FastLED philosophy) ============
+# Time-based animations, not frame-based
+# Max 30-40 fps for smooth, calm display
+
+TARGET_FPS = 33  # ~30ms per frame
+_last_frame_ms = 0
+
+def frame_should_render():
+    \"\"\"Check if enough time passed for next frame.\"\"\"
+    global _last_frame_ms
+    now = time.ticks_ms()
+    if now - _last_frame_ms >= (1000 // TARGET_FPS):
+        _last_frame_ms = now
+        return True
+    return False
+
+# ============ POWER LIMITING ============
+# Like FastLED.setMaxPowerInVoltsAndMilliamps(5, 900)
+
+MAX_POWER_MW = 4500  # 5V * 900mA = 4500mW
+LED_MW_PER_FULL = 60 # ~60mW per LED at full white
+
+def power_limit(leds, brightness):
+    \"\"\"Limit total power consumption.\"\"\"
+    # Calculate current power
+    total_power = 0
+    for r, g, b in leds:
+        led_power = (r + g + b) / 765.0 * LED_MW_PER_FULL * (brightness / 100.0)
+        total_power += led_power
+    
+    if total_power > MAX_POWER_MW:
+        scale = MAX_POWER_MW / total_power
+        return int(brightness * scale)
+    return brightness
+
+# 🔹 LAYER 4: CONNECTIVITY STATUS (Premium Nautical Design)
+# Elegant, non-intrusive WiFi status indication
+#
+# Design Principles:
+#   1. Tide display ALWAYS takes priority
+#   2. Warnings are peripheral, never central
+#   3. Subtle rhythmic indicators (not colors)
+#   4. Auto-explanatory visual language
+
+# WiFi State Machine
+WIFI_OK = 0          # Connected, all good
+WIFI_TEMP_DOWN = 1   # Disconnected < 6 hours
+WIFI_LONG_DOWN = 2   # Disconnected > 6 hours
+
+wifi_status = {
+    "state": WIFI_OK,
+    "last_ok": 0,           # Timestamp of last successful connection
+    "disconnect_since": 0,  # When disconnect started
+    "boot_warned": False    # True after boot warning shown
+}
+
+# Visual effect parameters (Apple-like subtlety)
+WIFI_BREATH_PERIOD = 10000     # 10s cycle (8-12s recommended)
+WIFI_BREATH_INTENSITY = 0.03  # +3% brightness variation
+WIFI_GHOST_INTERVAL = 45000   # 45s between pings
+WIFI_GHOST_FADE_MS = 400      # Fade duration
+WIFI_BOOT_WARN_MS = 2000      # Boot warning duration
+WIFI_TEMP_THRESHOLD = 6 * 60 * 60 * 1000  # 6 hours
+
+# Visual state
+wifi_visual = {
+    "breath_phase": 0.0,       # 0.0 to 1.0
+    "ghost_alpha": 0.0,        # 0.0 to 1.0 for ghost LED
+    "last_ghost": 0,           # Last ghost ping time
+    "uncertainty_offset": 0.0, # Micro-jitter for fallback data
+    "boot_start": 0            # Boot time for warning
+}
+
+def wifi_update_status(connected, now_ms):
+    \"\"\"Update WiFi state machine based on connection status.\"\"\"
+    global wifi_status
+    
+    if connected:
+        wifi_status["state"] = WIFI_OK
+        wifi_status["last_ok"] = now_ms
+        wifi_status["disconnect_since"] = 0
+    else:
+        if wifi_status["state"] == WIFI_OK:
+            # Just went offline
+            wifi_status["disconnect_since"] = now_ms
+        
+        # Check how long we've been offline
+        if wifi_status["disconnect_since"] > 0:
+            offline_duration = now_ms - wifi_status["disconnect_since"]
+            if offline_duration > WIFI_TEMP_THRESHOLD:
+                wifi_status["state"] = WIFI_LONG_DOWN
+            else:
+                wifi_status["state"] = WIFI_TEMP_DOWN
+
+def wifi_get_breath_modifier(now_ms):
+    \"\"\"Get subtle background breathing modifier for offline state.\"\"\"
+    if wifi_status["state"] == WIFI_OK:
+        return 0.0
+    
+    # Sine wave breathing: 0 to WIFI_BREATH_INTENSITY
+    phase = (now_ms % WIFI_BREATH_PERIOD) / WIFI_BREATH_PERIOD
+    return WIFI_BREATH_INTENSITY * (0.5 + 0.5 * math.sin(phase * 2 * 3.14159))
+
+def wifi_get_ghost_alpha(now_ms):
+    \"\"\"Get ghost ping LED alpha (0 = off, 1 = full).\"\"\"
+    global wifi_visual
+    
+    if wifi_status["state"] == WIFI_OK:
+        wifi_visual["ghost_alpha"] = 0.0
+        return 0.0
+    
+    # Only show ghost ping for TEMP_DOWN, add more for LONG_DOWN
+    if wifi_status["state"] == WIFI_TEMP_DOWN:
+        interval = WIFI_GHOST_INTERVAL
+    else:  # LONG_DOWN
+        interval = WIFI_GHOST_INTERVAL // 2  # More frequent
+    
+    # Check if time for a new ghost ping
+    if now_ms - wifi_visual["last_ghost"] > interval:
+        wifi_visual["last_ghost"] = now_ms
+        wifi_visual["ghost_alpha"] = 1.0
+    
+    # Fade out
+    if wifi_visual["ghost_alpha"] > 0:
+        fade_rate = 1.0 / WIFI_GHOST_FADE_MS
+        wifi_visual["ghost_alpha"] = max(0.0, wifi_visual["ghost_alpha"] - fade_rate * 16)  # ~16ms per frame
+    
+    return wifi_visual["ghost_alpha"]
+
+def wifi_get_uncertainty_offset(now_ms):
+    \"\"\"Get micro-jitter offset when using cached/fallback data.\"\"\"
+    if tide_physics["confidence"] >= 90:
+        return 0.0
+    
+    # Subtle jitter: ±0.1 LED at slow rate
+    phase = (now_ms % 5000) / 5000.0
+    return 0.1 * math.sin(phase * 2 * 3.14159)
+
+def wifi_boot_warning_active(now_ms):
+    \"\"\"Check if boot warning should be shown (only once).\"\"\"
+    global wifi_visual, wifi_status
+    
+    if wifi_status["boot_warned"]:
+        return False
+    
+    if wifi_visual["boot_start"] == 0:
+        wifi_visual["boot_start"] = now_ms
+    
+    elapsed = now_ms - wifi_visual["boot_start"]
+    
+    if elapsed > WIFI_BOOT_WARN_MS:
+        wifi_status["boot_warned"] = True
+        return False
+    
+    return wifi_status["state"] != WIFI_OK
+
+def wifi_apply_visual_layer(base_colors, active_leds, now_ms):
+    \"\"\"Apply all WiFi visual effects to LED array. Returns modified colors.\"\"\"
+    
+    colors = list(base_colors)  # Copy
+    
+    # 1. Background breathing (inactive LEDs only)
+    breath = wifi_get_breath_modifier(now_ms)
+    if breath > 0:
+        for i in range(len(colors)):
+            if i not in active_leds:
+                r, g, b = colors[i]
+                # Add cold blue-gray breathing
+                colors[i] = (
+                    min(255, int(r + 10 * breath)),
+                    min(255, int(g + 15 * breath)),
+                    min(255, int(b + 25 * breath))  # More blue
+                )
+    
+    # 2. Ghost ping (top or bottom LED)
+    ghost = wifi_get_ghost_alpha(now_ms)
+    if ghost > 0:
+        ghost_idx = len(colors) - 1  # Top LED
+        r, g, b = colors[ghost_idx]
+        # Pale cyan ghost
+        colors[ghost_idx] = (
+            min(255, int(r + 40 * ghost)),
+            min(255, int(g + 80 * ghost)),
+            min(255, int(b + 100 * ghost))
+        )
+    
+    # 3. Boot warning (disconnected icon pattern)
+    if wifi_boot_warning_active(now_ms):
+        # Show two disconnected dots at center
+        mid = len(colors) // 2
+        if mid > 1:
+            colors[mid - 1] = (60, 80, 100)  # Pale blue
+            colors[mid + 1] = (60, 80, 100)
+    
+    return colors
 
 # ============ HELPER FUNCTIONS ============
 
-def tide_lerp_color(c1, c2, t):
-    t = max(0, min(1, t))
-    return (
-        int(c1[0] + (c2[0] - c1[0]) * t),
-        int(c1[1] + (c2[1] - c1[1]) * t),
-        int(c1[2] + (c2[2] - c1[2]) * t)
-    )
-
-def tide_apply_brightness(color, factor):
-    return (
-        min(255, max(0, int(color[0] * factor))),
-        min(255, max(0, int(color[1] * factor))),
-        min(255, max(0, int(color[2] * factor)))
-    )
-
-def get_tide_depth_color(level, row, max_row):
-    TIDE_DEEP = (5, 15, 40)
-    TIDE_LOW = (0, 40, 60)
-    TIDE_MID = (0, 80, 120)
-    TIDE_HIGH = (40, 140, 180)
-    TIDE_PREAMAR = (80, 180, 200)
-    
-    if level >= 95: base = TIDE_PREAMAR
-    elif level >= 70: base = tide_lerp_color(TIDE_HIGH, TIDE_PREAMAR, (level - 70) / 25)
-    elif level >= 40: base = tide_lerp_color(TIDE_MID, TIDE_HIGH, (level - 40) / 30)
-    elif level >= 15: base = tide_lerp_color(TIDE_LOW, TIDE_MID, (level - 15) / 25)
-    else: base = tide_lerp_color(TIDE_DEEP, TIDE_LOW, level / 15)
-    
-    depth_factor = 0.5 + 0.5 * (row / max(1, max_row - 1))
-    return tide_apply_brightness(base, depth_factor)
+def tide_lerp(a, b, t):
+    return a + (b - a) * max(0, min(1, t))
 
 def tide_parse_time(t_str):
     try:
@@ -1874,280 +2551,376 @@ def tide_parse_time(t_str):
     except:
         return 0
 
-# ============ CACHE (NVS) ============
+# ============ LAYER 1: PHYSICS (FETCH) ============
 
+# NVS Cache helpers
 def tide_save_cache():
-    global tide_data
     try:
-        import nvs
-        nvs.set_str("tide_cache", json.dumps(tide_data))
+        import json
+        cache = {
+            "extremas": tide_physics["extremas"],
+            "timestamp": tide_physics["timestamp"],
+            "level": tide_physics["level_abs"]
+        }
+        nvs.set_str("tide_cache", json.dumps(cache))
         nvs.commit()
-    except:
-        pass
+        print("TIDE: Cache saved")
+    except Exception as e:
+        print("TIDE: Cache save error:", e)
 
 def tide_load_cache():
-    global tide_data
     try:
-        import nvs
-        cached = nvs.get_str("tide_cache")
-        if cached:
-            loaded = json.loads(cached)
-            tide_data.update(loaded)
-            tide_data["source"] = "CACHE"
-            # Decay confidence based on age
-            age_hours = (time.time() - tide_data["last_sync"]) / 3600
-            tide_data["confidence"] = max(30, 100 - int(age_hours * 5))
+        import json
+        data = nvs.get_str("tide_cache")
+        if data:
+            cache = json.loads(data)
+            tide_physics["extremas"] = cache.get("extremas", [])
+            tide_physics["timestamp"] = cache.get("timestamp", 0)
+            tide_physics["level_abs"] = cache.get("level", 1.0)
+            tide_physics["confidence"] = 70  # Cache = reduced confidence
+            print("TIDE: Loaded from cache")
             return True
-    except:
+    except Exception:
         pass
     return False
 
-# ============ PREDICTION ALGORITHM ============
-
-def tide_predict():
-    global tide_data
-    # Lunar period: 12h 25min = 44700 seconds
-    LUNAR_PERIOD = 44700
-    
-    # Use most recent known data as baseline
-    last_high = tide_data.get("last_high", {"timestamp": 0, "level": 1.5})
-    last_low = tide_data.get("last_low", {"timestamp": 0, "level": 0.5})
-    
+def fetch_tide_data():
+    global tide_physics
     now = time.time()
+    lt = time.localtime(now)
+    month = lt[1]
+    day = lt[2]
     
-    # Calculate amplitude from real data
-    amplitude = (last_high["level"] - last_low["level"]) / 2
-    midpoint = (last_high["level"] + last_low["level"]) / 2
+    print("TIDE: Fetching data for {}/{}...".format(month, day))
     
-    # Determine reference point and phase offset
-    if last_high["timestamp"] > last_low["timestamp"]:
-        ref_time = last_high["timestamp"]
-        phase_offset = 0  # High tide = cos(0) = 1
-    else:
-        ref_time = last_low["timestamp"]
-        phase_offset = math.pi  # Low tide = cos(π) = -1
-    
-    # Calculate current phase
-    elapsed = now - ref_time
-    phase = phase_offset + (elapsed / LUNAR_PERIOD) * 2 * math.pi
-    
-    # Calculate predicted level
-    current_height = midpoint + amplitude * math.cos(phase)
-    level = int((current_height / (midpoint * 2)) * 100)
-    level = max(0, min(100, level))
-    
-    # Determine direction from derivative
-    derivative = -amplitude * math.sin(phase)
-    if abs(derivative) < 0.05:
-        direction = "stable"
-    elif derivative > 0:
-        direction = "rising"
-    else:
-        direction = "falling"
-    
-    # Update state
-    tide_data["level"] = level
-    tide_data["direction"] = direction
-    tide_data["source"] = "PREDICT"
-    tide_data["confidence"] = 30
-    
-    # Update shared data
-    SHARED_DATA["TIDE"] = level
-    SHARED_DATA["TIDE_DIR"] = direction
-    SHARED_DATA["TIDE_CONF"] = 30
-
-# ============ API FETCH ============
-
-def tide_try_api(api_config):
-    global tide_data
+    # ============ FALLBACK 1: Primary API (Tábua de Marés BR) ============
     try:
-        now = time.localtime()
-        month = now[1]
-        day = now[2]
-        current_mins = now[3] * 60 + now[4]
+        url = "{}/tabua-mare/{}/{}/[{}]".format(
+            TIDE_APIS[0]["base"], TIDE_HARBOR_ID, month, day
+        )
+        print("TIDE: Trying", url)
+        res = urequests.get(url, timeout=10)
+        data = res.json()
+        res.close()
         
-        if api_config["type"] == "tabuamare":
-            url = f"{api_config['base']}/tabua-mare/{TIDE_HARBOR_ID}/{month}/[{day}]"
-            response = urequests.get(url, timeout=10)
-            data = json.loads(response.text)
-            response.close()
+        # Parse API Response
+        extremas = []
+        harbor = data.get("data", [{}])[0] if data.get("data") else {}
+        months_data = harbor.get("months", [{}])
+        
+        if months_data:
+            days_data = months_data[0].get("days", [{}])
+            if days_data:
+                hours = days_data[0].get("hours", [])
+                for entry in hours:
+                    try:
+                        h, m = entry["hour"].split(":")
+                        # Calculate timestamp for today at this hour
+                        day_start = now - (now % 86400)  # Midnight
+                        t = day_start + int(h)*3600 + int(m)*60
+                        
+                        extremas.append({
+                            "time": t,
+                            "level": float(entry["level"]),
+                            "type": ""
+                        })
+                    except Exception:
+                        pass
+        
+        if extremas:
+            # Sort by time
+            extremas.sort(key=lambda x: x["time"])
             
-            if data.get("data") and len(data["data"]) > 0:
-                harbor = data["data"][0]
-                months = harbor.get("months", [])
-                if months:
-                    days = months[0].get("days", [])
-                    if days:
-                        hours = days[0].get("hours", [])
-                        return tide_process_entries(hours, current_mins, harbor.get("mean_level", 1.1), api_config["name"])
-        
-        elif api_config["type"] == "worldtides":
-            # WorldTides API format (simplified, would need API key)
-            pass
-        
-    except Exception as e:
-        pass
-    
-    return False
-
-def tide_process_entries(hours, current_mins, mean_level, source):
-    global tide_data
-    
-    hours.sort(key=lambda e: tide_parse_time(e.get("hour", "00:00:00")[:5]))
-    
-    prev_entry = None
-    next_entry = None
-    
-    for entry in hours:
-        hour_str = entry.get("hour", "00:00:00")[:5]
-        entry_time = tide_parse_time(hour_str)
-        entry_level = float(entry.get("level", 1))
-        
-        # Track high/low for prediction learning
-        if entry_level > mean_level * 1.2:
-            tide_data["last_high"] = {"timestamp": time.time(), "level": entry_level}
-        elif entry_level < mean_level * 0.8:
-            tide_data["last_low"] = {"timestamp": time.time(), "level": entry_level}
-        
-        if entry_time <= current_mins:
-            prev_entry = entry
-        elif next_entry is None:
-            next_entry = entry
-    
-    if prev_entry and next_entry:
-        prev_time = tide_parse_time(prev_entry.get("hour", "00:00")[:5])
-        next_time = tide_parse_time(next_entry.get("hour", "00:00")[:5])
-        prev_height = float(prev_entry.get("level", 1))
-        next_height = float(next_entry.get("level", 1))
-        
-        if next_time > prev_time:
-            progress = (current_mins - prev_time) / (next_time - prev_time)
-            current_height = prev_height + (next_height - prev_height) * progress
-            level = min(100, max(0, int(current_height / (mean_level * 2) * 100)))
+            # Classify High/Low by comparing adjacent levels
+            for i in range(len(extremas)):
+                if i == 0:
+                    extremas[i]["type"] = "low" if extremas[i]["level"] < extremas[1]["level"] else "high"
+                else:
+                    extremas[i]["type"] = "low" if extremas[i]["level"] < extremas[i-1]["level"] else "high"
             
-            diff = next_height - prev_height
-            if abs(diff) < 0.1: direction = "stable"
-            elif diff > 0: direction = "rising"
-            else: direction = "falling"
+            tide_physics["extremas"] = extremas
+            tide_physics["timestamp"] = now
+            tide_physics["confidence"] = 100
             
-            # Update state
-            tide_data["level"] = level
-            tide_data["direction"] = direction
-            tide_data["source"] = source
-            tide_data["confidence"] = 100
-            tide_data["last_sync"] = time.time()
-            tide_data["next_event"] = {
-                "type": "high" if next_height > prev_height else "low",
-                "time": next_entry.get("hour", "")[:5],
-                "level": next_height
-            }
-            
-            # Update shared data
-            SHARED_DATA["TIDE"] = level
-            SHARED_DATA["TIDE_DIR"] = direction
-            SHARED_DATA["TIDE_CONF"] = 100
-            SHARED_DATA["TIDE_NEXT"] = tide_data["next_event"]["time"]
-            
-            # Save to cache
             tide_save_cache()
+            tide_update_intelligence()
+            print("TIDE: API OK - {} extremas".format(len(extremas)))
             return True
+            
+    except Exception as e:
+        print("TIDE: Primary API failed:", e)
     
+    # ============ FALLBACK 2: Secondary API (WorldTides) ============
+    if len(TIDE_APIS) > 1 and TIDE_APIS[1].get("key"):
+        try:
+            print("TIDE: Trying WorldTides API...")
+            # WorldTides uses lat/lon + API key
+            api = TIDE_APIS[1]
+            lat = api.get("lat", -14.78)  # Default: Ilhéus
+            lon = api.get("lon", -39.03)
+            key = api.get("key", "")
+            
+            url = "{}?extremes&lat={}&lon={}&key={}".format(
+                api["base"], lat, lon, key
+            )
+            res = urequests.get(url, timeout=10)
+            data = res.json()
+            res.close()
+            
+            # WorldTides Response: {"status": 200, "extremes": [...]}
+            extremas = []
+            for e in data.get("extremes", []):
+                extremas.append({
+                    "time": e.get("dt", 0),  # Unix timestamp
+                    "level": float(e.get("height", 0)),
+                    "type": "high" if e.get("type") == "High" else "low"
+                })
+            
+            if extremas:
+                extremas.sort(key=lambda x: x["time"])
+                tide_physics["extremas"] = extremas
+                tide_physics["timestamp"] = now
+                tide_physics["confidence"] = 95  # Slightly less than primary
+                
+                tide_save_cache()
+                tide_update_intelligence()
+                print("TIDE: WorldTides OK - {} extremas".format(len(extremas)))
+                return True
+                
+        except Exception as e:
+            print("TIDE: WorldTides failed:", e)
+    
+    # ============ FALLBACK 3: NVS Cache ============
+    print("TIDE: Trying NVS cache...")
+    if tide_load_cache():
+        # Check cache age
+        cache_age = now - tide_physics["timestamp"]
+        if cache_age < 86400:  # Less than 24h old
+            tide_physics["confidence"] = max(50, 100 - int(cache_age / 3600) * 5)
+            tide_update_intelligence()
+            return True
+        else:
+            print("TIDE: Cache too old")
+    
+    # ============ FALLBACK 4: Safe Defaults ============
+    print("TIDE: Using safe defaults")
+    tide_physics["extremas"] = [
+        {"time": now - 3*3600, "level": 0.5, "type": "low"},
+        {"time": now + 3*3600, "level": 2.0, "type": "high"},
+        {"time": now + 9*3600, "level": 0.5, "type": "low"}
+    ]
+    tide_physics["timestamp"] = now
+    tide_physics["confidence"] = 20
+    tide_update_intelligence()
     return False
 
-# ============ MAIN INTELLIGENCE ============
+# ============ LAYER 2: INTELLIGENCE (PROCESS) ============
 
-def tide_sync():
-    """Silent sync with fallback chain - always returns valid data"""
-    global tide_data
-    
-    # Try each API silently
-    for api in TIDE_APIS:
-        if tide_try_api(api):
-            return  # Success - done
-    
-    # All APIs failed - try cache
-    if tide_load_cache():
-        if tide_data["confidence"] > 30:
-            return  # Cache is fresh enough
-    
-    # Cache too old or empty - use prediction
-    tide_predict()
-
-def tide_update():
-    """Called from main loop - handles proactive sync"""
-    global tide_data
+def tide_update_intelligence():
+    global tide_cycle, tide_physics
     
     now = time.time()
-    age = now - tide_data.get("last_sync", 0)
+    extremas = tide_physics["extremas"]
     
-    # Proactive sync (before data expires)
-    if age > TIDE_PROACTIVE_SYNC:
-        if 'wifi_sta' in dir() and wifi_sta and wifi_sta.isconnected():
-            tide_sync()
-        elif age > TIDE_UPDATE_INTERVAL:
-            # Offline too long - use prediction
-            tide_predict()
-`,
-        commands: `    if cmd == "TIDE:SYNC":
-        tide_sync()
-        print(f"OK:TIDE:SYNC:level={tide_data['level']},src={tide_data['source']},conf={tide_data['confidence']}")
-        return True
-    if cmd == "TIDE:STATUS":
-        d = tide_data
-        print(f"OK:TIDE:STATUS:level={d['level']},dir={d['direction']},conf={d['confidence']},src={d['source']}")
-        return True
-    if cmd == "TIDE:DIAG":
-        d = tide_data
-        age = int(time.time() - d.get("last_sync", 0))
-        print("=== TIDE INTELLIGENCE ===")
-        print(f"Level: {d['level']}% ({d['direction']})")
-        print(f"Source: {d['source']} (conf={d['confidence']}%)")
-        print(f"Age: {age}s")
-        print(f"Next: {d['next_event']['type']} at {d['next_event']['time']}")
-        print(f"Last High: {d['last_high']['level']}m")
-        print(f"Last Low: {d['last_low']['level']}m")
-        print("=========================")
-        return True
-    if cmd == "TIDE:FORCE:PREDICT":
-        tide_predict()
-        print(f"OK:TIDE:PREDICT:level={tide_data['level']}")
-        return True
-    if cmd == "TIDE:SHOW":
-        global tide_enabled
-        tide_enabled = True
-        print("OK:TIDE:SHOW")
-        return True
-    if cmd == "TIDE:HIDE":
-        tide_enabled = False
-        print("OK:TIDE:HIDE")
-        return True
-    if cmd.startswith("TIDE:LEVEL:"):
-        tide_data["level"] = int(cmd.split(":")[2])
-        tide_data["source"] = "MANUAL"
-        SHARED_DATA["TIDE"] = tide_data["level"]
-        print(f"OK:TIDE:LEVEL:{tide_data['level']}")
-        return True`,
-        init: `    # Initialize Tide Intelligence System
-    print("TIDE: Intelligence System starting...")
+    if len(extremas) < 2:
+        tide_cycle["valid"] = False
+        return
+
+    # 1. Find Active Cycle (The pair [A, B] surrounding NOW)
+    cycle_start = None
+    cycle_end = None
     
-    # Try to load cached data first
-    if tide_load_cache():
-        print(f"TIDE: Cache loaded (conf={tide_data['confidence']}%)")
+    for i in range(len(extremas) - 1):
+        if extremas[i]["time"] <= now <= extremas[i+1]["time"]:
+            cycle_start = extremas[i]
+            cycle_end = extremas[i+1]
+            break
+            
+    # Fallback: If not found (e.g., slightly out of bounds), use nearest
+    if not cycle_start:
+        cycle_start = extremas[0]
+        cycle_end = extremas[1]
+
+    # 2. Update Cycle Schema
+    tide_cycle["valid"] = True
+    tide_cycle["t_start"] = cycle_start["time"]
+    tide_cycle["t_end"] = cycle_end["time"]
+    
+    # Robust Min/Max determination
+    if cycle_start["level"] < cycle_end["level"]:
+        tide_cycle["type"] = "rising"
+        tide_cycle["min_level"] = cycle_start["level"]
+        tide_cycle["max_level"] = cycle_end["level"]
     else:
-        # No cache - set safe defaults (will sync when WiFi available)
-        tide_data["level"] = 50
-        tide_data["source"] = "INIT"
-        tide_data["confidence"] = 10
-        print("TIDE: No cache, using safe defaults")
+        tide_cycle["type"] = "falling"
+        tide_cycle["min_level"] = cycle_end["level"]
+        tide_cycle["max_level"] = cycle_start["level"]
     
-    SHARED_DATA["TIDE"] = tide_data["level"]
-    SHARED_DATA["TIDE_DIR"] = tide_data["direction"]
-    SHARED_DATA["TIDE_CONF"] = tide_data["confidence"]`,
-        loop: `    # Tide Intelligence - Proactive Update
-    tide_update()`,
+    # ============ HARMONIC COSINE INTERPOLATION ============
+    # Physical Model: Tide follows a sinusoidal curve between extrema
+    # Formula: level(t) = mid + amplitude * cos(π * progress)
+    # This provides smooth S-curve transitions matching real tide physics
+    
+    # Calculate time progress within current cycle (0.0 to 1.0)
+    t_duration = tide_cycle["t_end"] - tide_cycle["t_start"]
+    if t_duration < 60: t_duration = 60  # Safety: min 1 minute
+    progress = (now - tide_cycle["t_start"]) / t_duration
+    progress = max(0.0, min(1.0, progress))  # Clamp to [0, 1]
+    
+    # Cosine Harmonic: Smooth curve from 0→1 or 1→0
+    # cos(0)=1, cos(π)=-1 → Normalize (1 - cos(x)) / 2 gives 0→1
+    harmonic = (1 - math.cos(progress * 3.14159265)) / 2
+    
+    if tide_cycle["type"] == "rising":
+        # Rising: 0.0 (low) → 1.0 (high)
+        tide_cycle["pos_norm"] = harmonic
+    else:
+        # Falling: 1.0 (high) → 0.0 (low)
+        tide_cycle["pos_norm"] = 1.0 - harmonic
+    
+    # Calculate interpolated absolute level (for display/API)
+    rng = tide_cycle["max_level"] - tide_cycle["min_level"]
+    tide_physics["level_abs"] = tide_cycle["min_level"] + rng * tide_cycle["pos_norm"]
+
+    # 3. Detect Plateau (Peak/Valley Stability)
+    # If we are very close to start or end time (e.g. within 15 mins)
+    time_to_edge = min(abs(now - tide_cycle["t_start"]), abs(now - tide_cycle["t_end"]))
+    tide_cycle["plateau"] = time_to_edge < (15 * 60)
+
+    # 4. Share Data (Context for other modules)
+    SHARED_DATA["TIDE_LEVEL"] = int(tide_physics["level_abs"] * 100) # cm
+    SHARED_DATA["TIDE_POS"] = int(tide_cycle["pos_norm"] * 100)      # %
+    SHARED_DATA["TIDE_DIR"] = tide_cycle["type"]
+    SHARED_DATA["TIDE_CONF"] = tide_physics["confidence"]
+
+# ============ LAYER 3: VISUAL (RENDER) ============
+
+def tide_get_visual_state(num_leds):
+    # Calculates the float LED position and effects
+    
+    # 1. Safety Clamp
+    pos = max(0.0, min(1.0, tide_cycle["pos_norm"]))
+    
+    # 2. Map to LED Space (0 to N-1)
+    target_led = pos * (num_leds - 1)
+    
+    # 3. Plateau Breathing Effect
+    # If plateau, add subtle sine wave to position or brightness
+    halo = 0.0
+    if tide_cycle["plateau"]:
+        # Breathe: 0.0 to 1.0 over 4 seconds
+        t = time.time()
+        breath = (math.sin(t * 1.5) + 1) / 2  # 0 to 1
+        halo = 0.3 + (breath * 0.4)           # 0.3 to 0.7 intensity
+    
+    return target_led, halo
+
+def get_tide_depth_color(pos_norm, row, max_row):
+    # Dynamic Gradients based on relative position
+    
+    # Colors (RGB)
+    C_DEEP = (0, 10, 30)
+    C_MID = (0, 60, 100)
+    C_HIGH = (0, 140, 160)
+    C_PEAK = (100, 200, 220)
+    
+    # Base color depends on Normalized Position (0.0 - 1.0)
+    if pos_norm < 0.3:
+        base = tide_lerp_color_tuple(C_DEEP, C_MID, pos_norm / 0.3)
+    elif pos_norm < 0.8:
+        base = tide_lerp_color_tuple(C_MID, C_HIGH, (pos_norm - 0.3) / 0.5)
+    else:
+        base = tide_lerp_color_tuple(C_HIGH, C_PEAK, (pos_norm - 0.8) / 0.2)
+        
+    return base
+
+def tide_lerp_color_tuple(c1, c2, t):
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t)
+    )
+
+# ============ COMMAND HANDLERS ============
+
+def set_tide_level(level):
+    # Manual Override (Testing)
+    tide_physics["level_abs"] = level
+    tide_physics["timestamp"] = time.time()
+    tide_update_intelligence()
+
+def set_tide_direction(direction):
+    # Manual Override
+    tide_cycle["type"] = direction
+    SHARED_DATA["TIDE_DIR"] = direction
+
+`,
+        init: `
+    # Initialize Physics
+    try:
+        if not fetch_tide_data():
+            print("TIDE: Init fetch failed")
+    except Exception as e:
+        print("TIDE: Init Error:", e)
+`,
+        loop: `
+    # Periodic Intelligence Update
+    if time.time() - tide_physics["timestamp"] > 60:
+         tide_update_intelligence()
+        
+    # Auto-Fetch
+    if time.time() - tide_physics["timestamp"] > TIDE_UPDATE_INTERVAL:
+         fetch_tide_data()
+`,
+        commands: {
+            'TIDE:SYNC': {
+                handler: `
+    fetch_tide_data()
+    return "OK SYNC"
+`,
+                description: 'Force sync with Tide API'
+            },
+            'TIDE:STATUS': {
+                handler: `
+    return "L:{:.2f}m P:{:.2f} C:{}% D:{}".format(
+        tide_physics["level_abs"],
+        tide_cycle["pos_norm"],
+        tide_physics["confidence"],
+        tide_cycle["type"]
+    )
+`,
+                description: 'Get Physics & Intelligence Status'
+            },
+            'TIDE:FETCH': {
+                handler: `
+    success = fetch_tide_data()
+    return "OK" if success else "ERROR"
+`,
+                description: 'Manual fetch trigger'
+            },
+            'TIDE:LEVEL': {
+                handler: `
+    if len(args) > 0:
+        set_tide_level(float(args[0]))
+        return "OK LEVEL"
+    return "ERR ARG"
+`,
+                description: 'Set tide level (meters)'
+            },
+            'TIDE:DIR': {
+                handler: `
+    if len(args) > 0:
+        set_tide_direction(args[0])
+        return "OK DIR"
+    return "ERR ARG"
+`,
+                description: 'Set tide direction (rising/falling)'
+            }
+        },
         caps: ['TIDE']
     };
 }
+
 
 
 
@@ -2170,7 +2943,7 @@ http_socket = None
 http_poll = None
 dns_socket = None
 
-# Session management (Simple Token)
+# Session management(Simple Token)
 tech_session_token = None
 
 def setup_web_server():
@@ -2182,12 +2955,12 @@ def setup_web_server():
         http_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         http_socket.bind(addr)
         http_socket.listen(5)
-        
+
         http_poll = uselect.poll()
         http_poll.register(http_socket, uselect.POLLIN)
         print(f"WEB: Server listening on port {WEB_PORT}")
 
-        # DNS Server (Captive Portal)
+        # DNS Server(Captive Portal)
         if CAPTIVE_PORTAL and not wifi_sta.isconnected():
             setup_ap_mode()
             dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2211,7 +2984,7 @@ def setup_ap_mode():
 def handle_dns_request(sock):
     try:
         data, addr = sock.recvfrom(1024)
-        # Simple DNS Hijack: Respond with own IP (192.168.4.1) for ALL queries
+        # Simple DNS Hijack: Respond with own IP(192.168.4.1) for ALL queries
         # DNS Header: ID(2), Flags(2), QCount(2), Ans(2), Auth(2), Add(2)
         # We construct a response that points to 192.168.4.1
         
@@ -2224,8 +2997,8 @@ def handle_dns_request(sock):
         # Counts: 1 Question, 1 Answer
         counts = b'\\x00\\x01\\x00\\x01\\x00\\x00\\x00\\x00'
         
-        # Question Section (copy from request)
-        # Find end of question (null byte)
+        # Question Section(copy from request)
+        # Find end of question(null byte)
         idx = 12
         while data[idx] != 0:
             idx += 1 + data[idx]
@@ -2233,9 +3006,9 @@ def handle_dns_request(sock):
         question = data[12:idx]
         
         # Answer Section
-        # Name Ptr (0xC00C), TYPE A (0x0001), CLASS IN (0x0001), TTL (60s), LEN (4), IP
+        # Name Ptr(0xC00C), TYPE A(0x0001), CLASS IN(0x0001), TTL(60s), LEN(4), IP
         answer = b'\\xc0\\x0c\\x00\\x01\\x00\\x01\\x00\\x00\\x00\\x3c\\x00\\x04\\xc0\\xa8\\x04\\x01'
-        
+
         response = trans_id + flags + counts + question + answer
         sock.sendto(response, addr)
     except Exception:
@@ -2249,7 +3022,7 @@ def handle_web_request(client):
         if not req_line:
             client.close()
             return
-            
+
         req_str = req_line.decode().strip()
         method, path, proto = req_str.split()
         
@@ -2295,13 +3068,13 @@ def handle_web_request(client):
                 # Redirect to root
                 client.send("HTTP/1.1 302 Found\\r\\nLocation: /\\r\\n\\r\\n")
             else:
-                # Basic Command handling (GET /?cmd=...)
+                # Basic Command handling(GET /? cmd =...)
                 if "cmd=" in path:
                     handle_legacy_cmd(path)
-                    client.send("HTTP/1.1 302 Found\\r\\nLocation: /\\r\\n\\r\\n")
-                else:
-                    serve_user_dashboard(client)
-                
+                client.send("HTTP/1.1 302 Found\\r\\nLocation: /\\r\\n\\r\\n")
+                # else:
+                #    serve_user_dashboard(client)
+
         client.close()
     except Exception as e:
         print(f"WEB: Req Error: {e}")
@@ -2319,7 +3092,7 @@ def send_401(client):
 
 def handle_tech_login(client):
     global tech_session_token
-    # Read body (PIN)
+    # Read body(PIN)
     body = client.read(1024).decode()
     if TECH_PIN in body:
         import urandom
@@ -2334,15 +3107,15 @@ def handle_ota_update(client, headers):
         if content_len == 0:
             client.send("HTTP/1.1 400 Bad Request\\r\\n\\r\\nNo Content")
             return
-
+    
         print(f"WEB: Starting OTA Update ({content_len} bytes)")
         
         # We need to write to the 'next' partition. 
         # For simplicity in this snippets, we will write to a file 'update.bin' 
         # and rely on a bootloader or just overwrite main.py if it's a script update.
         # BUT for true OTA, we usually use esp32.Partition.
-        # Here we will overwrite main.py for script-based updates (Dangerous but standard for MicroPython file-based fw)
-        
+        # Here we will overwrite main.py for script-based updates(Dangerous but standard for MicroPython file-based fw)
+
         with open('main.py.new', 'wb') as f:
             remaining = content_len
             while remaining > 0:
@@ -2355,7 +3128,7 @@ def handle_ota_update(client, headers):
         # Swap files
         import os
         os.rename('main.py.new', 'main.py')
-        
+    
         client.send("HTTP/1.1 200 OK\\r\\n\\r\\nUpdate Complete. Rebooting...")
         time.sleep(1)
         machine.reset()
@@ -2365,10 +3138,10 @@ def handle_ota_update(client, headers):
         client.send("HTTP/1.1 500 Error\\r\\n\\r\\nUpdate Failed")
 
 def handle_wifi_config(client):
-    # Read JSON body {"ssid": "...", "pass": "..."}
+    # Read JSON body { "ssid": "...", "pass": "..." }
     try:
         body_json = client.read(1024).decode()
-        # Parse logic (simplified)
+        # Parse logic(simplified)
         import json
         creds = json.loads(body_json)
         
@@ -2377,7 +3150,7 @@ def handle_wifi_config(client):
         nvs = esp32.NVS("system")
         nvs.set_blob("wifi_creds", json.dumps(creds))
         nvs.commit()
-        
+
         client.send("HTTP/1.1 200 OK\\r\\n\\r\\nSaved. Rebooting...")
         time.sleep(1)
         machine.reset()
@@ -2387,24 +3160,24 @@ def handle_wifi_config(client):
 def serve_tech_login(client):
     html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:50px}input{padding:10px;font-size:18px;text-align:center}button{padding:10px 20px;font-size:18px;background:#007bff;color:#fff;border:none;margin-top:10px}</style></head>
     <body><h2>Technician Access</h2><input type="password" id="pin" placeholder="PIN"><br><button onclick="login()">Login</button>
-    <script>function login(){fetch('/tech/login',{method:'POST',body:document.getElementById('pin').value}).then(r=>{if(r.ok)location.reload();else alert('Invalid PIN')})}</script></body></html>"""
+        <script>function login() { fetch('/tech/login', { method: 'POST', body: document.getElementById('pin').value }).then(r => { if (r.ok) location.reload(); else alert('Invalid PIN') }) }</script></body></html>"""
     client.send("HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + html)
 
 def serve_tech_dashboard(client):
     html = """<!DOCTYPE html><html><head><title>Tech Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#1a1a1a;color:#0f0;font-family:monospace;padding:20px}.card{border:1px solid #333;padding:15px;margin-bottom:15px}button{background:#333;color:#fff;border:1px solid #555;padding:8px;cursor:pointer}</style></head>
     <body><h1>TECH MODE</h1>
-    <div class="card"><h3>OTA Update</h3><input type="file" id="fw"><button onclick="upload()">Upload Firmware</button></div>
-    <div class="card"><h3>Actions</h3><button onclick="fetch('/tech/reset',{method:'POST'})">Factory Reset</button></div>
-    <script>
-    function upload(){
-        var f=document.getElementById('fw').files[0];
-        if(!f)return;
-        var h=new XMLHttpRequest();
-        h.open("POST","/tech/update");
-        h.send(f);
-        h.onload=()=>alert(h.responseText);
-    }
-    </script></body></html>"""
+        <div class="card"><h3>OTA Update</h3><input type="file" id="fw"><button onclick="upload()">Upload Firmware</button></div>
+            <div class="card"><h3>Actions</h3><button onclick="fetch('/tech/reset',{method:'POST'})">Factory Reset</button></div>
+                <script>
+function upload() {
+    var f = document.getElementById('fw').files[0];
+    if (!f) return;
+    var h = new XMLHttpRequest();
+    h.open("POST", "/tech/update");
+    h.send(f);
+    h.onload = () => alert(h.responseText);
+}
+</script></body></html>"""
     client.send("HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + html)
 
 def handle_screen_api(client, req_str):
@@ -2415,16 +3188,15 @@ def handle_screen_api(client, req_str):
             body_str = parts[1]
             import json
             body = json.loads(body_str)
-            
+
             cmd = body.get("cmd", "")
             if cmd == "text":
                 x = body.get("x", 0)
                 y = body.get("y", 0)
                 msg = body.get("msg", "")
                 handle_command(f"DISP:TEXT:{x}:{y}:{msg}")
-            elif cmd == "clear":
                 handle_command("DISP:CLEAR")
-                
+
             client.send('HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n{"status":"ok"}')
         else:
             client.send("HTTP/1.1 400 Bad Request\\r\\n\\r\\n")
@@ -2442,7 +3214,7 @@ def handle_legacy_cmd(path):
         for p in pairs:
             k, v = p.split("=")
             params[k] = v
-        
+
         if "mode" in params:
             new_mode = params["mode"]
             if new_mode in MODES:
@@ -2454,25 +3226,25 @@ def handle_legacy_cmd(path):
 def serve_user_dashboard(client):
     # Provisioning UI or Normal UI depending on mode
     is_ap = not wifi_sta.isconnected()
-    
+
     if is_ap:
         # Provisioning UI
         html = """<!DOCTYPE html><html><head><title>Setup WiFi</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{background:#fff;color:#333;font-family:sans-serif;padding:20px;text-align:center}input{display:block;width:90%;margin:10px auto;padding:10px;border:1px solid #ccc}button{background:#007bff;color:#fff;padding:12px 30px;border:none;border-radius:5px;font-size:16px}</style></head>
-        <body><h1>Connect Device</h1><p>Enter your WiFi credentials</p>
-        <input id="ssid" placeholder="WiFi Name (SSID)">
-        <input id="pass" type="password" placeholder="Password">
-        <button onclick="save()">Connect</button>
-        <script>function save(){fetch('/api/wifi',{method:'POST',body:JSON.stringify({ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value})}).then(r=>alert('Saved. Device will reboot.'))}</script></body></html>"""
+    <body > <h1>Connect Device < /h1><p>Enter your WiFi credentials</p >
+        <input id="ssid" placeholder = "WiFi Name (SSID)" >
+            <input id="pass" type = "password" placeholder = "Password" >
+                <button onclick="save()" > Connect </button>
+                    <script > function save() { fetch('/api/wifi', { method: 'POST', body: JSON.stringify({ ssid: document.getElementById('ssid').value, pass: document.getElementById('pass').value }) }).then(r => alert('Saved. Device will reboot.')) } </script ></body > </html>"""
     else:
         # Normal User UI
         html = f"""<!DOCTYPE html><html><head><title>{WEB_TITLE}</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{{background:#111;color:#eee;font-family:sans-serif;text-align:center;padding:20px}}.mode-btn{{display:block;width:100%;padding:15px;margin:10px 0;background:#333;color:#fff;text-decoration:none;border-radius:8px}}</style></head>
-        <body><h1>{WEB_TITLE}</h1><h3>Current Mode: {current_mode}</h3>
-        <a href="/?cmd=mode&val=AMBIENT" class="mode-btn">AMBIENT</a>
-        <a href="/?cmd=mode&val=PARTY" class="mode-btn">PARTY</a>
-        <a href="/?cmd=mode&val=SIGNAGE" class="mode-btn">SIGNAGE</a>
-        <br><a href="/tech" style="color:#555;font-size:12px">Technician Access</a></body></html>"""
+    <body > <h1>{ WEB_TITLE } < /h1><h3>Current Mode: {current_mode}</h3 >
+    <a href="/?cmd=mode&val=AMBIENT" class="mode-btn" > AMBIENT </a>
+        <a href = "/?cmd=mode&val=PARTY" class="mode-btn" > PARTY </a>
+            <a href = "/?cmd=mode&val=SIGNAGE" class="mode-btn" > SIGNAGE </a>
+                <br > <a href="/tech" style = "color:#555;font-size:12px" > Technician Access < /a></body > </html>"""
 
-    client.send("HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + html)
+client.send("HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + html)
 `,
         commands: `    if cmd == "WEB:START":
         setup_web_server()
@@ -2484,7 +3256,7 @@ def serve_user_dashboard(client):
         print("OK:WEB:STOPPED")
         return True`,
         init: `setup_web_server()`,
-        loop: `    # Web Server Poll (HTTP + DNS)
+        loop: `    # Web Server Poll(HTTP + DNS)
     if http_poll:
         res = http_poll.poll(0)
         for sock, ev in res:
@@ -2520,7 +3292,7 @@ def mqtt_callback(topic, msg):
         m = msg.decode()
         print(f"MQTT: Recv {t}: {m}")
         # Map MQTT to internal commands
-        # Topic: prefix/cmd -> Payload: VAR:SET:TEMP:25
+        # Topic: prefix / cmd -> Payload: VAR: SET: TEMP: 25
         if t.endswith("/cmd"):
             handle_command(m)
     except Exception as e:
@@ -2582,9 +3354,6 @@ function generateOtaSnippet(config: ModuleConfig): ModuleSnippet {
         globals: `
 # OTA Globals
 def start_ota_listener():
-    # Simple socket listener that accepts a file upload on port 8266
-    # This is a blocking operation usually, or async.
-    # For stability, we might just print instructions or start a separate mode.
     pass
 
 def do_ota_update(url):
@@ -2643,12 +3412,12 @@ def check_udp():
         if res:
             try:
                 data, addr = udp_socket.recvfrom(1024)
-                # Raw WLED/DRGB: 2, 255 (timeout), [r,g,b]...
+                # Raw WLED / DRGB: 2, 255(timeout), [r, g, b]...
                 # Simple implementation: expect raw RGB dump
-                # or tpm2.net. For now, assume raw RGB for simplicity if size matches
+                # or tpm2.net.For now, assume raw RGB for simplicity if size matches
                 if len(data) > 0 and 'np' in globals():
-                    # Just naive copy for now (improves latency)
-                    # Ideally check protocol headers (WLED: 2 or 4)
+                    # Just naive copy for now(improves latency)
+                    # Ideally check protocol headers(WLED: 2 or 4)
                     # WARN: This might block or be slow in python
                     pass 
             except Exception: pass
@@ -2679,51 +3448,51 @@ NVS_DIRTY = False
 NVS_AUTOSAVE_KEYS = ${JSON.stringify(autoSave)}
 
 def nvs_load():
-    try:
+try:
         # Load known keys
         # Since NVS stores typed data, we need a strategy.
         # For simplicity, we assume strings or store JSON blob.
         # Here we just iterate known keys if possible or specific keys
-        for key in NVS_AUTOSAVE_KEYS:
-            try:
-                # Buffer for string reading (128 bytes max)
+for key in NVS_AUTOSAVE_KEYS:
+    try:
+                # Buffer for string reading(128 bytes max)
                 buf = bytearray(128)
                 sz = nvs.get_blob(key, buf)
-                val = buf[:sz].decode()
-                SHARED_DATA[key] = val
-                print(f"NVS: Loaded {key}={val}")
+val = buf[:sz].decode()
+SHARED_DATA[key] = val
+print(f"NVS: Loaded {key}={val}")
             except Exception: pass
     except Exception as e:
-        print(f"NVS: Load Error {e}")
+print(f"NVS: Load Error {e}")
 
 def nvs_save_key(key, val):
-    try:
-        nvs.set_blob(key, str(val).encode())
-        nvs.commit()
+try:
+nvs.set_blob(key, str(val).encode())
+nvs.commit()
     except Exception as e:
-        print(f"NVS: Save Error {e}")
+print(f"NVS: Save Error {e}")
 `,
         commands: `    if cmd.startswith("NVS:SAVE:"):
-        # NVS:SAVE:KEY:VAL
-        parts = cmd.split(":", 3)
-        if len(parts) >= 4:
-            nvs_save_key(parts[2], parts[3])
-            print(f"OK:NVS:SAVED:{parts[2]}")
-        return True
-    if cmd == "NVS:CLEAR":
-        try:
-            nvs.erase_all()
-            nvs.commit()
-            print("OK:NVS:CLEARED")
-        except Exception: pass
-        return True`,
-        init: `
+        # NVS: SAVE: KEY: VAL
+parts = cmd.split(":", 3)
+if len(parts) >= 4:
+    nvs_save_key(parts[2], parts[3])
+print(f"OK:NVS:SAVED:{parts[2]}")
+return True
+if cmd == "NVS:CLEAR":
     try:
-        nvs_load()
-        print(f"NVS: Config loaded from namespace '{ns}'")
+nvs.erase_all()
+nvs.commit()
+print("OK:NVS:CLEARED")
+        except Exception: pass
+return True`,
+        init: `
+try:
+nvs_load()
+print(f"NVS: Config loaded from namespace '{ns}'")
     except Exception:
-        print("NVS: Init failed (partition missing?)")
-`,
+print("NVS: Init failed (partition missing?)")
+    `,
         loop: ``,
         caps: ['NVS']
     };
@@ -2735,46 +3504,46 @@ function generateEspNowSnippet(config: ModuleConfig): ModuleSnippet {
     return {
         imports: 'import espnow\nimport network',
         globals: `
-# ESP-NOW Globals
+# ESP - NOW Globals
 enow = None
 ESPNOW_PMK = "${pmk}"
 
 def setup_espnow():
-    global enow
-    try:
-        sta = network.WLAN(network.STA_IF)
-        sta.active(True)
-        enow = espnow.ESPNow()
-        enow.active(True)
-        try:
-            enow.set_pmk(ESPNOW_PMK)
+global enow
+try:
+sta = network.WLAN(network.STA_IF)
+sta.active(True)
+enow = espnow.ESPNow()
+enow.active(True)
+try:
+enow.set_pmk(ESPNOW_PMK)
         except Exception: pass # Might fail on some ports
-        print("ESPNOW: Init success")
+print("ESPNOW: Init success")
     except Exception as e:
-        print(f"ESPNOW: Init fail {e}")
+print(f"ESPNOW: Init fail {e}")
 
 def handle_espnow_packet():
-    if enow:
-        host, msg = enow.recv(0) # Non-blocking
-        if msg:
-            print(f"ESPNOW:RECV:{host.hex()}:{msg.decode()}")
+if enow:
+    host, msg = enow.recv(0) # Non - blocking
+if msg:
+    print(f"ESPNOW:RECV:{host.hex()}:{msg.decode()}")
             # Optional: Treat as command
             # handle_command(msg.decode())
 `,
         commands: `    if cmd.startswith("ESPNOW:SEND:"):
-        # ESPNOW:SEND:MAC:MSG
-        parts = cmd.split(":", 3)
-        if len(parts) >= 4 and enow:
-            try:
-                mac = bytes.fromhex(parts[2])
-                enow.send(mac, parts[3].encode())
-                print("OK:ESPNOW:SENT")
+        # ESPNOW: SEND: MAC: MSG
+parts = cmd.split(":", 3)
+if len(parts) >= 4 and enow:
+try:
+mac = bytes.fromhex(parts[2])
+enow.send(mac, parts[3].encode())
+print("OK:ESPNOW:SENT")
             except Exception as e:
-                print(f"ERR:ESPNOW:SEND:{e}")
-        return True`,
+print(f"ERR:ESPNOW:SEND:{e}")
+return True`,
         init: `setup_espnow()`,
         loop: `    try:
-        handle_espnow_packet()
+handle_espnow_packet()
     except Exception: pass`,
         caps: ['ESPNOW']
     };
@@ -2786,7 +3555,7 @@ function generateBleSnippet(config: ModuleConfig): ModuleSnippet {
     return {
         imports: 'import ubluetooth',
         globals: `
-# BLE Globals (Minimal UART)
+# BLE Globals(Minimal UART)
 ble = ubluetooth.BLE()
 ble_uart_rx = None
 
@@ -2794,7 +3563,7 @@ def setup_ble():
     ble.active(True)
     ble.config(gap_name='${name}')
     print("BLE: Active")
-    # Setup services would go here (complex for snippet)
+    # Setup services would go here(complex for snippet)
     # verifying user manual requirement first
 `,
         commands: `    if cmd == "BLE:STATUS":
@@ -2819,35 +3588,35 @@ function generateDisplaySnippet(config: ModuleConfig): ModuleSnippet {
 # Display Globals
 disp = None
 def setup_display():
-    global disp
-    try:
-        i2c = machine.I2C(0, scl=machine.Pin(${scl}), sda=machine.Pin(${sda}))
-        disp = ssd1306.SSD1306_I2C(${w}, ${h}, i2c)
-        disp.fill(0)
-        disp.text("ESP32 Ready", 0, 0)
-        disp.show()
-        print("DISP: Ready")
+global disp
+try:
+i2c = machine.I2C(0, scl = machine.Pin(${scl}), sda = machine.Pin(${sda}))
+disp = ssd1306.SSD1306_I2C(${w}, ${h}, i2c)
+disp.fill(0)
+disp.text("ESP32 Ready", 0, 0)
+disp.show()
+print("DISP: Ready")
     except Exception as e:
-        print(f"DISP: Init Error {e}")
+print(f"DISP: Init Error {e}")
 `,
         commands: `    if cmd.startswith("DISP:TEXT:"):
-        # DISP:TEXT:X:Y:MSG
-        parts = cmd.split(":", 4)
-        if len(parts) >= 5 and disp:
-            try:
-                x = int(parts[2])
-                y = int(parts[3])
-                msg = parts[4]
-                disp.text(msg, x, y, 1)
-                disp.show()
-                print("OK:DISP:TEXT")
+        # DISP: TEXT: X: Y: MSG
+parts = cmd.split(":", 4)
+if len(parts) >= 5 and disp:
+try:
+x = int(parts[2])
+y = int(parts[3])
+msg = parts[4]
+disp.text(msg, x, y, 1)
+disp.show()
+print("OK:DISP:TEXT")
             except Exception: pass
-        return True
-    if cmd == "DISP:CLEAR":
-        if disp:
-            disp.fill(0)
-            disp.show()
-        return True`,
+return True
+if cmd == "DISP:CLEAR":
+    if disp:
+        disp.fill(0)
+disp.show()
+return True`,
         init: `setup_display()`,
         loop: ``,
         caps: ['DISPLAY']
@@ -2887,10 +3656,10 @@ def check_rules(evt):
         return True`,
         init: '',
         loop: `
-    # Timer Check (every 30s)
+    # Timer Check(every 30s)
     if time.time() - last_timer_check > 30:
         last_timer_check = time.time()
-        # Get current HH:MM
+        # Get current HH: MM
         t = time.localtime()
         now_str = f"{t[3]:02}:{t[4]:02}"
         for timer in TIMERS:
@@ -2952,16 +3721,16 @@ print(f"ERR:UNKNOWN_CMD:{cmd}")
 # Boot Blink
 for _ in range(3):
     led.value(1)
-    time.sleep(0.1)
-    led.value(0)
-    time.sleep(0.1)
+time.sleep(0.1)
+led.value(0)
+time.sleep(0.1)
 
 # ============ MAIN LOOP ============
 while True:
     cmd = read_input()
-    if cmd:
-        handle_command(cmd)
-    time.sleep(0.01)
+if cmd:
+    handle_command(cmd)
+time.sleep(0.01)
 `;
 }
 
@@ -2981,81 +3750,81 @@ function generateModeSnippet(config: ModuleConfig, _intent: FirmwareIntent): Mod
     // Build profiles dictionary
     const profilesDict = modes.map(mode => {
         const profile = mc.profiles?.[mode] || { animation: 'RAINBOW' as const, brightness: 50 };
-        return `"${mode}": {"anim": "${profile.animation}", "bright": ${profile.brightness}}`;
+        return `"${mode}": { "anim": "${profile.animation}", "bright": ${profile.brightness} } `;
     }).join(', ');
 
     const buttonGlobals = buttonPin !== undefined ? `
 mode_btn_${name} = machine.Pin(${buttonPin}, machine.Pin.IN, machine.Pin.PULL_UP)
 mode_btn_last_${name} = 1
 mode_btn_press_time_${name} = 0
-` : '';
+    ` : '';
 
     const buttonLoop = buttonPin !== undefined ? `
     # Mode Button Handler
-    btn_val = mode_btn_${name}.value()
-    if btn_val == 0 and mode_btn_last_${name} == 1:
+btn_val = mode_btn_${name}.value()
+if btn_val == 0 and mode_btn_last_${name} == 1:
         mode_btn_press_time_${name} = time.ticks_ms()
     elif btn_val == 1 and mode_btn_last_${name} == 0:
-        press_duration = time.ticks_diff(time.ticks_ms(), mode_btn_press_time_${name})
-        if press_duration < ${longPressDuration}:
-            cycle_mode_${name}()
-            dispatch_event(f"MODE:{current_mode_${name}}")
+press_duration = time.ticks_diff(time.ticks_ms(), mode_btn_press_time_${name})
+if press_duration < ${longPressDuration}:
+            cycle_mode_${name} ()
+dispatch_event(f"MODE:{current_mode_${name}}")
     mode_btn_last_${name} = btn_val
-` : '';
+    ` : '';
 
     return {
         imports: '',
         globals: `
 # === DEVICE MODES: ${name} ===
-MODE_LIST_${name} = ${JSON.stringify(modes)}
-MODE_PROFILES_${name} = {${profilesDict}}
+    MODE_LIST_${name} = ${JSON.stringify(modes)}
+MODE_PROFILES_${name} = {${profilesDict} }
 current_mode_${name} = "${defaultMode}"
 ${buttonGlobals}
-def cycle_mode_${name}():
+def cycle_mode_${name} ():
     global current_mode_${name}
-    idx = MODE_LIST_${name}.index(current_mode_${name})
-    current_mode_${name} = MODE_LIST_${name}[(idx + 1) % len(MODE_LIST_${name})]
-    apply_mode_${name}()
+idx = MODE_LIST_${name}.index(current_mode_${name})
+    current_mode_${name} = MODE_LIST_${name} [(idx + 1) % len(MODE_LIST_${name})]
+    apply_mode_${name} ()
 
-def set_mode_${name}(mode):
-    global current_mode_${name}
-    if mode in MODE_LIST_${name}:
+def set_mode_${name} (mode):
+global current_mode_${name}
+if mode in MODE_LIST_${name}:
         current_mode_${name} = mode
-        apply_mode_${name}()
-        return True
-    return False
+        apply_mode_${name} ()
+return True
+return False
 
-def apply_mode_${name}():
+def apply_mode_${name} ():
     global current_mode_${name}
-    profile = MODE_PROFILES_${name}.get(current_mode_${name}, {})
-    anim = profile.get("anim", "RAINBOW")
-    bright = profile.get("bright", 50)
-    SHARED_DATA["MODE"] = current_mode_${name}
-    SHARED_DATA["MODE_ANIM"] = anim
-    SHARED_DATA["BRIGHTNESS"] = int(bright * 2.55)
-    print(f"SYS:MODE:{current_mode_${name}}:ANIM={anim}:BRIGHT={bright}")
-`,
+profile = MODE_PROFILES_${name}.get(current_mode_${name}, {})
+anim = profile.get("anim", "RAINBOW")
+bright = profile.get("bright", 50)
+SHARED_DATA["MODE"] = current_mode_${name}
+SHARED_DATA["MODE_ANIM"] = anim
+SHARED_DATA["BRIGHTNESS"] = int(bright * 2.55)
+print(f"SYS:MODE:{current_mode_${name}}:ANIM={anim}:BRIGHT={bright}")
+    `,
         commands: `
     # MODE Commands
-    if cmd == "MODE:NEXT":
-        cycle_mode_${name}()
-        return "OK:MODE:" + current_mode_${name}
-    if cmd == "MODE:GET":
-        return f"OK:MODE:{current_mode_${name}}"
-    if cmd.startswith("MODE:SET:"):
-        new_mode = cmd.split(":")[2]
-        if set_mode_${name}(new_mode):
-            return "OK:MODE:" + new_mode
-        return "ERR:INVALID_MODE"
-    if cmd == "MODE:LIST":
-        return "OK:MODES:" + ",".join(MODE_LIST_${name})
-`,
+if cmd == "MODE:NEXT":
+        cycle_mode_${name} ()
+return "OK:MODE:" + current_mode_${name}
+if cmd == "MODE:GET":
+    return f"OK:MODE:{current_mode_${name}}"
+if cmd.startswith("MODE:SET:"):
+    new_mode = cmd.split(":")[2]
+if set_mode_${name} (new_mode):
+return "OK:MODE:" + new_mode
+return "ERR:INVALID_MODE"
+if cmd == "MODE:LIST":
+    return "OK:MODES:" + ",".join(MODE_LIST_${name})
+        `,
         init: `
     # Initialize Device Mode
-    apply_mode_${name}()
-    print(f"SYS:MODE_INIT:{current_mode_${name}}")
+    apply_mode_${name} ()
+print(f"SYS:MODE_INIT:{current_mode_${name}}")
 `,
-        loop: `${buttonLoop}`,
+        loop: `${buttonLoop} `,
         caps: ['MODE']
     };
 }
@@ -3084,20 +3853,20 @@ function generateTelemetrySnippet(config: ModuleConfig, _intent: FirmwareIntent)
 import gc`,
         globals: `
 # === TELEMETRY: ${name} ===
-_TEL_VERSION = "1.0"
-_TEL_CONSENT = True  # User opted-in
-_TEL_ANONYMIZE = ${anonymize}
+    _TEL_VERSION = "1.0"
+_TEL_CONSENT = True  # User opted -in
+    _TEL_ANONYMIZE = ${anonymize}
 _TEL_PERSIST = ${persistToNvs}
 _TEL_INTERVAL = ${reportInterval}
 _TEL_LAST_REPORT = 0
 
-# Device fingerprint (anonymized)
+# Device fingerprint(anonymized)
 def _tel_device_id():
-    import machine
+import machine
     uid = machine.unique_id()
-    if _TEL_ANONYMIZE:
-        return hashlib.sha256(uid).hexdigest()[:16]
-    return uid.hex()
+if _TEL_ANONYMIZE:
+    return hashlib.sha256(uid).hexdigest()[: 16]
+return uid.hex()
 
 # Telemetry data structure
 TEL_DATA = {
@@ -3110,21 +3879,23 @@ TEL_DATA = {
 }
 
 def tel_init():
-    TEL_DATA["did"] = _tel_device_id()
+TEL_DATA["did"] = _tel_device_id()
     ${hasLifecycle ? 'TEL_DATA["lc"]["boot"] += 1' : ''}
     ${hasLifecycle ? 'TEL_DATA["lc"]["rst"] = str(machine.reset_cause())' : ''}
     ${persistToNvs ? 'tel_load()' : ''}
-    print(f"TEL:INIT:{TEL_DATA[\\'did\\']}")
+print(f"TEL:INIT:{TEL_DATA[\\'did\\']}")
 
 def tel_track_anim(anim_name):
     ${hasFeatures ? `
     if "anim" in TEL_DATA.get("ft", {}):
-        TEL_DATA["ft"]["anim"][anim_name] = TEL_DATA["ft"]["anim"].get(anim_name, 0) + 1` : 'pass'}
+        TEL_DATA["ft"]["anim"][anim_name] = TEL_DATA["ft"]["anim"].get(anim_name, 0) + 1` : 'pass'
+            }
 
 def tel_track_mode(mode_name):
     ${hasFeatures ? `
     if "mode" in TEL_DATA.get("ft", {}):
-        TEL_DATA["ft"]["mode"][mode_name] = TEL_DATA["ft"]["mode"].get(mode_name, 0) + 1` : 'pass'}
+        TEL_DATA["ft"]["mode"][mode_name] = TEL_DATA["ft"]["mode"].get(mode_name, 0) + 1` : 'pass'
+            }
 
 def tel_track_cmd():
     ${hasFeatures ? 'TEL_DATA["ft"]["cmd"] = TEL_DATA["ft"].get("cmd", 0) + 1' : 'pass'}
@@ -3137,17 +3908,19 @@ def tel_track_brightness(val):
     bright_list = TEL_DATA.get("bh", {}).get("bright", [])
     bright_list.append(val)
     if len(bright_list) > 24:
-        bright_list.pop(0)  # Keep last 24 samples` : 'pass'}
+        bright_list.pop(0)  # Keep last 24 samples` : 'pass'
+            }
 
 def tel_update_uptime():
     ${hasLifecycle ? `
-    TEL_DATA["lc"]["up"] = int(time.time() - _boot_time) if "_boot_time" in dir() else 0` : 'pass'}
+    TEL_DATA["lc"]["up"] = int(time.time() - _boot_time) if "_boot_time" in dir() else 0` : 'pass'
+            }
 
 def tel_report():
-    tel_update_uptime()
-    gc.collect()
+tel_update_uptime()
+gc.collect()
     ${hasReliability ? 'TEL_DATA["rl"]["mem"] = gc.mem_free()' : ''}
-    return TEL_DATA
+return TEL_DATA
 
 def tel_save():
     ${persistToNvs ? `
@@ -3156,7 +3929,8 @@ def tel_save():
             nvs.set_str("tel_data", json.dumps(TEL_DATA))
             nvs.commit()
     except Exception:
-        pass` : 'pass'}
+        pass` : 'pass'
+            }
 
 def tel_load():
     ${persistToNvs ? `
@@ -3169,215 +3943,44 @@ def tel_load():
                     if k in TEL_DATA:
                         TEL_DATA[k] = loaded[k]
     except Exception:
-        pass` : 'pass'}
+        pass` : 'pass'
+            }
 
 def tel_reset():
-    for k in TEL_DATA:
-        if isinstance(TEL_DATA[k], dict):
-            TEL_DATA[k] = {}
+for k in TEL_DATA:
+    if isinstance(TEL_DATA[k], dict):
+        TEL_DATA[k] = {}
         elif isinstance(TEL_DATA[k], int):
-            TEL_DATA[k] = 0
-    TEL_DATA["did"] = _tel_device_id()
-`,
+TEL_DATA[k] = 0
+TEL_DATA["did"] = _tel_device_id()
+    `,
         commands: `
     # TELEMETRY Commands
-    if cmd == "TEL:STATUS":
-        return "OK:ENABLED" if _TEL_CONSENT else "OK:DISABLED"
-    if cmd == "TEL:REPORT":
-        tel_track_cmd()
-        return "OK:TEL:" + json.dumps(tel_report())
-    if cmd == "TEL:RESET":
-        tel_reset()
-        return "OK:TEL:RESET"
-    if cmd == "TEL:SAVE":
-        tel_save()
-        return "OK:TEL:SAVED"
-`,
+if cmd == "TEL:STATUS":
+    return "OK:ENABLED" if _TEL_CONSENT else "OK:DISABLED"
+if cmd == "TEL:REPORT":
+    tel_track_cmd()
+return "OK:TEL:" + json.dumps(tel_report())
+if cmd == "TEL:RESET":
+    tel_reset()
+return "OK:TEL:RESET"
+if cmd == "TEL:SAVE":
+    tel_save()
+return "OK:TEL:SAVED"
+    `,
         init: `
     # Initialize Telemetry
-    global _boot_time
-    _boot_time = time.time()
-    tel_init()
-`,
+global _boot_time
+_boot_time = time.time()
+tel_init()
+    `,
         loop: `
-    # Telemetry periodic save (every ${reportInterval}s)
-    if time.time() - _TEL_LAST_REPORT > _TEL_INTERVAL:
-        _TEL_LAST_REPORT = time.time()
-        tel_save()
+    # Telemetry periodic save(every ${reportInterval}s)
+if time.time() - _TEL_LAST_REPORT > _TEL_INTERVAL:
+    _TEL_LAST_REPORT = time.time()
+tel_save()
 `,
         caps: ['TELEMETRY']
-    };
-}
-
-// ============ AUDIO REACTIVE (Phase 13) ============
-function generateAudioSnippet(config: ModuleConfig, _intent: FirmwareIntent): ModuleSnippet {
-    const ac = config.audioConfig;
-    if (!ac || !ac.enabled) {
-        return { imports: '', globals: '', commands: '', init: '', loop: '', caps: [] };
-    }
-
-    const name = config.name.replace(/[^a-zA-Z0-9]/g, '_');
-    const pin = ac.pin || 34;
-    const sampleRate = ac.sampleRate || 10000;
-    const fftSize = ac.fftSize || 64;
-    const autoGain = ac.autoGain !== false;
-    const gainMin = ac.gainMin || 0.5;
-    const gainMax = ac.gainMax || 5.0;
-    const noiseFloor = ac.noiseFloor || 100;
-    const beatDetection = ac.beatDetection !== false;
-    const beatSensitivity = ac.beatSensitivity || 1.0;
-    const beatDecay = ac.beatDecay || 200;
-    const mode = ac.mode || 'SPECTRUM';
-    const targetNeoPixel = ac.targetNeoPixel || '';
-
-    return {
-        imports: `from array import array
-import math`,
-        globals: `
-# === AUDIO REACTIVE: ${name} ===
-_AUD_PIN = ${pin}
-_AUD_SAMPLE_RATE = ${sampleRate}
-_AUD_FFT_SIZE = ${fftSize}
-_AUD_AUTO_GAIN = ${autoGain}
-_AUD_GAIN = 1.0
-_AUD_GAIN_MIN = ${gainMin}
-_AUD_GAIN_MAX = ${gainMax}
-_AUD_NOISE_FLOOR = ${noiseFloor}
-_AUD_BEAT_DETECT = ${beatDetection}
-_AUD_BEAT_SENS = ${beatSensitivity}
-_AUD_BEAT_DECAY = ${beatDecay}
-_AUD_MODE = "${mode}"
-_AUD_TARGET = "${targetNeoPixel}"
-
-# Audio state
-_aud_adc = None
-_aud_samples = array('H', [0] * _AUD_FFT_SIZE)
-_aud_spectrum = [0] * (_AUD_FFT_SIZE // 2)
-_aud_bands = {"BASS": 0, "MID": 0, "HIGH": 0}
-_aud_beat = False
-_aud_beat_time = 0
-_aud_energy_avg = 0
-_aud_peak = 0
-
-def _aud_init():
-    global _aud_adc
-    _aud_adc = machine.ADC(machine.Pin(_AUD_PIN))
-    _aud_adc.atten(machine.ADC.ATTN_11DB)
-    _aud_adc.width(machine.ADC.WIDTH_12BIT)
-    print(f"AUDIO:INIT:PIN={_AUD_PIN}:FFT={_AUD_FFT_SIZE}")
-
-def _aud_sample():
-    """Collect samples from ADC"""
-    for i in range(_AUD_FFT_SIZE):
-        _aud_samples[i] = _aud_adc.read()
-
-def _aud_simple_fft():
-    """Simple magnitude spectrum (DFT, not full FFT for memory)"""
-    global _aud_spectrum, _aud_bands
-    n = _AUD_FFT_SIZE
-    half = n // 2
-    
-    # Calculate magnitude at key frequencies
-    for k in range(half):
-        real = 0
-        imag = 0
-        for t in range(n):
-            angle = 2 * 3.14159 * k * t / n
-            real += (_aud_samples[t] - 2048) * math.cos(angle)
-            imag -= (_aud_samples[t] - 2048) * math.sin(angle)
-        _aud_spectrum[k] = int(math.sqrt(real*real + imag*imag) / n)
-    
-    # Extract bands (BASS: 0-5, MID: 5-15, HIGH: 15+)
-    bass_end = min(5, half)
-    mid_end = min(15, half)
-    
-    _aud_bands["BASS"] = sum(_aud_spectrum[0:bass_end]) // max(1, bass_end)
-    _aud_bands["MID"] = sum(_aud_spectrum[bass_end:mid_end]) // max(1, mid_end - bass_end)
-    _aud_bands["HIGH"] = sum(_aud_spectrum[mid_end:half]) // max(1, half - mid_end)
-
-def _aud_detect_beat():
-    """Energy-based beat detection"""
-    global _aud_beat, _aud_beat_time, _aud_energy_avg, _aud_peak
-    
-    energy = sum(_aud_spectrum)
-    
-    # Running average (smooth)
-    _aud_energy_avg = _aud_energy_avg * 0.95 + energy * 0.05
-    
-    # Beat = instant energy > 1.5x average
-    threshold = _aud_energy_avg * 1.5 * _AUD_BEAT_SENS
-    now = time.ticks_ms()
-    
-    if energy > threshold and (now - _aud_beat_time) > _AUD_BEAT_DECAY:
-        _aud_beat = True
-        _aud_beat_time = now
-        _aud_peak = energy
-        dispatch_event("AUDIO:BEAT")
-    else:
-        _aud_beat = False
-    
-    return _aud_beat
-
-def _aud_auto_gain_adjust():
-    """Automatic gain normalization"""
-    global _AUD_GAIN
-    peak = max(_aud_spectrum) if _aud_spectrum else 0
-    
-    if peak < 50:
-        _AUD_GAIN = min(_AUD_GAIN * 1.02, _AUD_GAIN_MAX)
-    elif peak > 200:
-        _AUD_GAIN = max(_AUD_GAIN * 0.98, _AUD_GAIN_MIN)
-
-def audio_process():
-    """Main audio processing function"""
-    _aud_sample()
-    _aud_simple_fft()
-    
-    if _AUD_BEAT_DETECT:
-        _aud_detect_beat()
-    
-    if _AUD_AUTO_GAIN:
-        _aud_auto_gain_adjust()
-    
-    # Apply to SHARED_DATA
-    SHARED_DATA["AUDIO_BASS"] = _aud_bands["BASS"]
-    SHARED_DATA["AUDIO_MID"] = _aud_bands["MID"]
-    SHARED_DATA["AUDIO_HIGH"] = _aud_bands["HIGH"]
-    SHARED_DATA["AUDIO_BEAT"] = _aud_beat
-    SHARED_DATA["AUDIO_PEAK"] = _aud_peak
-    SHARED_DATA["AUDIO_MODE"] = _AUD_MODE
-
-def audio_get_bands():
-    return _aud_bands
-
-def audio_get_spectrum():
-    return _aud_spectrum
-`,
-        commands: `
-    # AUDIO Commands
-    if cmd == "AUDIO:STATUS":
-        return f"OK:AUDIO:MODE={_AUD_MODE}:GAIN={_AUD_GAIN:.2f}"
-    if cmd == "AUDIO:BANDS":
-        return f"OK:AUDIO:BASS={_aud_bands['BASS']}:MID={_aud_bands['MID']}:HIGH={_aud_bands['HIGH']}"
-    if cmd == "AUDIO:SPECTRUM":
-        return "OK:AUDIO:SPEC:" + ",".join(str(x) for x in _aud_spectrum[:16])
-    if cmd.startswith("AUDIO:MODE:"):
-        new_mode = cmd.split(":")[2]
-        if new_mode in ["SPECTRUM", "VU_METER", "BEAT_PULSE", "ENERGY"]:
-            global _AUD_MODE
-            _AUD_MODE = new_mode
-            return "OK:AUDIO:MODE:" + new_mode
-        return "ERR:INVALID_MODE"
-`,
-        init: `
-    # Initialize Audio Reactive
-    _aud_init()
-`,
-        loop: `
-    # Audio processing (every frame)
-    audio_process()
-`,
-        caps: ['AUDIO', 'FFT', 'BEAT_DETECT']
     };
 }
 
