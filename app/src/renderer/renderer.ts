@@ -112,7 +112,7 @@ const autoReconnectCheckbox = document.getElementById('auto-reconnect') as HTMLI
 // Console
 const commandInput = document.getElementById('command-input') as HTMLInputElement;
 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
-const logContainer = document.getElementById('log-container') as HTMLDivElement;
+const logContainer = document.getElementById('log-output') as HTMLDivElement;
 const clearLogBtn = document.getElementById('clear-log') as HTMLButtonElement;
 const exportLogBtn = document.getElementById('export-log') as HTMLButtonElement;
 
@@ -197,6 +197,26 @@ const otaModalClose = document.getElementById('ota-modal-close') as HTMLButtonEl
 const otaModalCancel = document.getElementById('ota-modal-cancel') as HTMLButtonElement;
 const otaModalConfirm = document.getElementById('ota-modal-confirm') as HTMLButtonElement;
 const otaEnabled = document.getElementById('ota-enabled') as HTMLInputElement;
+
+// Servo Modal Elements (Phase 15)
+const btnAddServo = document.getElementById('btn-add-servo') as HTMLButtonElement;
+const modalServoBackdrop = document.getElementById('servo-modal-backdrop') as HTMLDivElement;
+const modalServoTitle = document.getElementById('servo-modal-title') as HTMLHeadingElement;
+const modalServoClose = document.getElementById('servo-modal-close') as HTMLButtonElement;
+const modalServoCancel = document.getElementById('servo-modal-cancel') as HTMLButtonElement;
+const modalServoConfirm = document.getElementById('servo-modal-confirm') as HTMLButtonElement;
+// Servo Inputs
+const inpServoName = document.getElementById('servo-name') as HTMLInputElement;
+const inpServoPin = document.getElementById('servo-pin') as HTMLInputElement;
+const selServoType = document.getElementById('servo-type') as HTMLSelectElement;
+const inpServoMinPulse = document.getElementById('servo-min-pulse') as HTMLInputElement;
+const inpServoMaxPulse = document.getElementById('servo-max-pulse') as HTMLInputElement;
+const selServoSource = document.getElementById('servo-source') as HTMLSelectElement;
+const divServoMapping = document.getElementById('servo-mapping-container') as HTMLDivElement;
+const inpServoMapInMin = document.getElementById('servo-map-in-min') as HTMLInputElement;
+const inpServoMapInMax = document.getElementById('servo-map-in-max') as HTMLInputElement;
+const inpServoMapOutMin = document.getElementById('servo-map-out-min') as HTMLInputElement;
+const inpServoMapOutMax = document.getElementById('servo-map-out-max') as HTMLInputElement;
 
 // UDP Modal Elements
 const btnAddUdp = document.getElementById('btn-add-udp') as HTMLButtonElement;
@@ -428,6 +448,47 @@ function updateSpecsData(info: DeviceInfo): void {
 }
 
 
+// === TOAST SYSTEM ===
+function showToast(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', title?: string) {
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-type-${type}`;
+
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    if (type === 'error') icon = '❌';
+    if (type === 'warning') icon = '⚠️';
+
+    const finalTitle = title || (type.charAt(0).toUpperCase() + type.slice(1));
+
+    toast.innerHTML = `
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-content">
+            <div class="toast-title">${finalTitle}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+    `;
+
+    container.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    // Remove after 4s
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, 4000);
+}
+
 function addLog(message: string, type: 'sent' | 'received' | 'error' | 'info' = 'info'): void {
     const entry = document.createElement('div');
     entry.className = `log-entry log-${type}`;
@@ -630,6 +691,17 @@ document.querySelectorAll('.btn-soft').forEach(btn => {
     btn.addEventListener('click', () => {
         const cmd = (btn as HTMLButtonElement).dataset.cmd;
         if (cmd) sendCommand(cmd);
+    });
+});
+
+// Command Reference List Click
+document.querySelectorAll('.cmd-item').forEach(item => {
+    item.addEventListener('click', () => {
+        const cmd = (item as HTMLElement).dataset.cmd;
+        if (cmd) {
+            commandInput.value = cmd;
+            commandInput.focus();
+        }
     });
 });
 
@@ -1040,6 +1112,89 @@ function initAnimationCreator() {
 
     // Tide apply button
     document.getElementById('apply-tide')?.addEventListener('click', applyTideAnimation);
+
+    // Hardware Presets
+    const hwPreset = document.getElementById('hw-preset') as HTMLSelectElement;
+    const hwWidth = document.getElementById('hw-width') as HTMLInputElement;
+    const hwHeight = document.getElementById('hw-height') as HTMLInputElement;
+
+    hwPreset?.addEventListener('change', () => {
+        const val = hwPreset.value;
+        switch (val) {
+            case '8x8': hwWidth.value = '8'; hwHeight.value = '8'; break;
+            case '16x16': hwWidth.value = '16'; hwHeight.value = '16'; break;
+            case '32x8': hwWidth.value = '8'; hwHeight.value = '32'; break; // Vertical: H > W
+            case '60led': hwWidth.value = '1'; hwHeight.value = '60'; break; // Vertical Strip
+            case '12ring': hwWidth.value = '1'; hwHeight.value = '12'; break; // Vertical/Linear representation
+        }
+    });
+
+    // System Animations Handlers
+    document.querySelectorAll('[data-anim]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const anim = (btn as HTMLElement).dataset.anim;
+            if (anim) applyEffect(anim);
+        })
+    });
+
+    // Export .h Button
+    document.getElementById('btn-export-anim-h')?.addEventListener('click', exportToCppHeader);
+}
+
+// === C++ Header Export Function ===
+function exportToCppHeader() {
+    // 1. Get info
+    const animNameRaw = (document.getElementById('frame-tag') as HTMLInputElement)?.value || 'MyAnim';
+    const animName = animNameRaw.replace(/[^a-zA-Z0-9]/g, '_');
+
+    // Check if frames exist
+    if (!animationFrames || animationFrames.length === 0) {
+        showToast('Nenhuma animação criada!', 'error');
+        return;
+    }
+
+    const frameCount = animationFrames.length;
+    const ledCount = animationFrames[0].length;
+    const fps = parseInt((document.getElementById('anim-fps') as HTMLInputElement)?.value || '10');
+    const delayMs = Math.floor(1000 / fps);
+
+    // 2. Build C++ Content
+    let cpp = `// Animation: ${animName}\n`;
+    cpp += `// Generated by LED Animation Creator v1.2\n`;
+    cpp += `#include <Arduino.h>\n\n`;
+
+    cpp += `const uint16_t ${animName}_frames = ${frameCount};\n`;
+    cpp += `const uint16_t ${animName}_leds = ${ledCount};\n`;
+    cpp += `const uint16_t ${animName}_delay = ${delayMs};\n\n`;
+
+    // 3. Encode frames (simple array of uint32_t for now - RGB)
+    // Optimization: could be PROGMEM
+    cpp += `const uint32_t ${animName}_data[${frameCount}][${ledCount}] PROGMEM = {\n`;
+
+    for (let f = 0; f < frameCount; f++) {
+        cpp += `  { `;
+        const frame = animationFrames[f];
+        for (let i = 0; i < ledCount; i++) {
+            // 0x00RRGGBB
+            const hex = `0x${((frame[i].r << 16) | (frame[i].g << 8) | frame[i].b).toString(16).padStart(6, '0').toUpperCase()}`;
+            cpp += `${hex}${i < ledCount - 1 ? ',' : ''}`;
+        }
+        cpp += ` }${f < frameCount - 1 ? ',' : ''}\n`;
+    }
+    cpp += `};\n`;
+
+    // 4. Download
+    const blob = new Blob([cpp], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${animName}.h`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(`Arquivo ${animName}.h gerado!`, 'success');
 }
 
 function initFrames(pixelCount: number) {
@@ -1341,6 +1496,53 @@ function applyEffect(effect: string) {
             }
             break;
 
+        // === SYSTEM ANIMATIONS ===
+        case 'sys-boot':
+            // Spinning white loading circle or progress bar
+            // For now, simple chase
+            const bootPos = Math.floor((time * 10) % count);
+            for (let i = 0; i < count; i++) {
+                if (i === bootPos) ledPreview.setPixel(i, 255, 255, 255);
+                else {
+                    const dist = (i - bootPos + count) % count;
+                    const dim = Math.max(0, 255 - dist * 50);
+                    ledPreview.setPixel(i, dim, dim, dim);
+                }
+            }
+            break;
+
+        case 'sys-wifi':
+            // Pulse Blue/Cyan
+            const wifiPhase = (Math.sin(time * 5) + 1) / 2; // 0 to 1
+            const wifiR = 0;
+            const wifiG = Math.floor(100 * wifiPhase);
+            const wifiB = Math.floor(255 * wifiPhase); // Cyan pulsing
+            for (let i = 0; i < count; i++) {
+                ledPreview.setPixel(i, wifiR, wifiG, wifiB);
+                // Maybe some random packets
+                if (Math.random() < 0.05) ledPreview.setPixel(i, 255, 255, 255);
+            }
+            break;
+
+        case 'sys-error':
+            // Blinking Red
+            const errState = Math.floor(time * 4) % 2 === 0;
+            for (let i = 0; i < count; i++) {
+                if (errState) ledPreview.setPixel(i, 255, 0, 0);
+                else ledPreview.setPixel(i, 20, 0, 0); // Dim red
+            }
+            break;
+
+        case 'sys-success':
+            // Green sweep
+            const succPos = (time * 1.5) % 1; // 0 to 1
+            const succIndex = Math.floor(succPos * count);
+            for (let i = 0; i < count; i++) {
+                if (i <= succIndex) ledPreview.setPixel(i, 0, 255, 0);
+                else ledPreview.setPixel(i, 0, 20, 0);
+            }
+            break;
+
         case 'tide':
             // Show tide config panel
             const tideConfig = document.getElementById('tide-config');
@@ -1530,85 +1732,72 @@ function applyTideAnimation() {
     let phase = 0;
     const speedMultiplier = waveSpeed / 5;
 
+
+    // Instantiate Premium Visuals Engine
+    let tideEngine: any = null;
+    if (typeof window.TideVisuals !== 'undefined') {
+        tideEngine = new window.TideVisuals({
+            baseColor: lc,
+            riseColor: hc,
+            fallColor: { r: 255, g: 150, b: 150 }, // Fallback fall color if not defined inputs
+            // Map UI inputs to config if possible
+        });
+    }
+
     function renderTide() {
         if (!ledPreview) return;
 
-        // Simulate 12-hour tide cycle
+        // Simulate Data Inputs (12h cycle)
         phase += 0.02 * speedMultiplier;
-        const tideLevel = (Math.sin(phase) + 1) / 2; // 0 to 1
-        currentTideLevel = Math.round(tideLevel * 100);
+        const simulatedLevel = (Math.sin(phase) + 1) / 2; // 0 to 1
+        const simulatedTrend = Math.cos(phase); // Derivative of sin is cos
+        currentTideLevel = Math.round(simulatedLevel * 100);
 
+        // Update Engine inputs
+        if (tideEngine && displayMode === 'bar') {
+            tideEngine.update(0.05, {
+                level: simulatedLevel,
+                trend: simulatedTrend,
+                confidence: 1.0,
+                hasWifi: true
+            });
+
+            // Get Rendered Pixels from Engine
+            const pixels = tideEngine.render(count, (config as any).matrixWidth || 1, (config as any).matrixHeight || count);
+
+            // Apply to Preview
+            for (let i = 0; i < count; i++) {
+                const p = pixels[i];
+                ledPreview.setPixel(i, p.r, p.g, p.b);
+            }
+
+            ledPreview.render();
+            return;
+        }
+
+        // --- Legacy / Easter Egg Modes ---
+        const tideLevel = simulatedLevel;
         switch (displayMode) {
-            case 'bar':
-                // Bar mode: Fill LEDs from bottom to top based on tide level
-                const filledLEDs = Math.floor(tideLevel * count);
-                for (let i = 0; i < count; i++) {
-                    if (i < filledLEDs) {
-                        const t = filledLEDs > 0 ? i / filledLEDs : 0;
-                        const r = Math.floor(lc.r + (hc.r - lc.r) * t);
-                        const g = Math.floor(lc.g + (hc.g - lc.g) * t);
-                        const b = Math.floor(lc.b + (hc.b - lc.b) * t);
-                        ledPreview.setPixel(i, r, g, b);
-                    } else if (i === filledLEDs) {
-                        // Wave crest shimmer
-                        const shimmer = Math.random() * 0.3 + 0.7;
-                        ledPreview.setPixel(i,
-                            Math.floor(hc.r * shimmer + 255 * (1 - shimmer)),
-                            Math.floor(hc.g * shimmer + 255 * (1 - shimmer)),
-                            Math.floor(hc.b * shimmer + 255 * (1 - shimmer))
-                        );
-                    } else {
-                        ledPreview.setPixel(i, 5, 5, 15);
-                    }
-                }
-                break;
-
             case 'wave':
-                // Wave mode: Moving wave pattern with ripples
+                // ... (Existing Wave Logic preserved roughly or just minimalist placeholder)
                 for (let i = 0; i < count; i++) {
                     const pos = i / count;
-                    // Main wave
                     const mainWave = Math.sin(pos * Math.PI * 4 - phase * 2) * 0.5 + 0.5;
-                    // Secondary ripple
-                    const ripple = Math.sin(pos * Math.PI * 8 - phase * 3) * 0.2;
-                    // Combine with tide level
-                    const intensity = Math.max(0, Math.min(1, (mainWave + ripple) * tideLevel));
-
+                    const intensity = mainWave * tideLevel;
                     const r = Math.floor(lc.r + (hc.r - lc.r) * intensity);
                     const g = Math.floor(lc.g + (hc.g - lc.g) * intensity);
                     const b = Math.floor(lc.b + (hc.b - lc.b) * intensity);
                     ledPreview.setPixel(i, r, g, b);
                 }
                 break;
-
-            case 'gradient':
-                // Gradient mode: Smooth color transition based on tide level
+            default:
+                // Fallback to simple fill if engine missing or other mode
+                const filledLEDs = Math.floor(tideLevel * count);
                 for (let i = 0; i < count; i++) {
-                    const pos = i / count;
-                    // Blend based on both position and tide level
-                    const blend = (pos + tideLevel) / 2;
-                    const r = Math.floor(lc.r + (hc.r - lc.r) * blend);
-                    const g = Math.floor(lc.g + (hc.g - lc.g) * blend);
-                    const b = Math.floor(lc.b + (hc.b - lc.b) * blend);
-                    ledPreview.setPixel(i, r, g, b);
+                    if (i < filledLEDs) ledPreview.setPixel(i, hc.r, hc.g, hc.b);
+                    else ledPreview.setPixel(i, 5, 5, 10);
                 }
-                break;
-
-            case 'pulse':
-                // Pulse mode: All LEDs breathe together based on tide level
-                const brightness = 0.3 + tideLevel * 0.7;
-                const pulseWave = Math.sin(phase * 3) * 0.15 + 0.85; // Subtle pulse
-                const finalBrightness = brightness * pulseWave;
-
-                for (let i = 0; i < count; i++) {
-                    const r = Math.floor(lc.r + (hc.r - lc.r) * tideLevel * finalBrightness);
-                    const g = Math.floor(lc.g + (hc.g - lc.g) * tideLevel * finalBrightness);
-                    const b = Math.floor(lc.b + (hc.b - lc.b) * tideLevel * finalBrightness);
-                    ledPreview.setPixel(i, r, g, b);
-                }
-                break;
         }
-
         ledPreview.render();
     }
 
@@ -2405,6 +2594,120 @@ if (btnGenerateFw) {
 
 // === NeoPixel Modal Functions ===
 
+// === TOUCH MODULE ===
+const touchModalBackdrop = document.getElementById('touch-modal-backdrop');
+const touchModalClose = document.getElementById('touch-modal-close');
+const touchModalCancel = document.getElementById('touch-modal-cancel');
+const touchModalConfirm = document.getElementById('touch-modal-confirm');
+const btnAddTouch = document.getElementById('btn-add-touch');
+
+const touchName = document.getElementById('touch-name') as HTMLInputElement;
+const touchPin = document.getElementById('touch-pin') as HTMLInputElement;
+const touchMode = document.getElementById('touch-mode') as HTMLSelectElement;
+const touchThreshold = document.getElementById('touch-threshold') as HTMLInputElement;
+const touchThresholdVal = document.getElementById('touch-threshold-val') as HTMLSpanElement;
+const touchRawVal = document.getElementById('touch-raw-val') as HTMLSpanElement;
+const btnTouchCalStart = document.getElementById('btn-touch-cal-start') as HTMLButtonElement;
+const btnTouchCalStop = document.getElementById('btn-touch-cal-stop') as HTMLButtonElement;
+
+let isTouchCalibrating = false;
+
+function openTouchModal() {
+    if (touchModalBackdrop) {
+        touchModalBackdrop.classList.remove('hidden');
+        touchModalBackdrop.style.display = 'flex';
+    }
+    // Set defaults
+    touchName.value = 'Touch Sensor';
+    touchPin.value = '4';
+    touchMode.value = 'NATIVE';
+    touchThreshold.value = '40';
+    touchThresholdVal.textContent = '40';
+    touchRawVal.textContent = '--';
+    toggleCalibrationUI(false);
+}
+
+function closeTouchModal() {
+    if (touchModalBackdrop) {
+        touchModalBackdrop.classList.add('hidden');
+        touchModalBackdrop.style.display = '';
+    }
+    if (isTouchCalibrating) {
+        stopTouchCalibration();
+    }
+}
+
+function toggleCalibrationUI(calibrating: boolean) {
+    isTouchCalibrating = calibrating;
+    if (calibrating) {
+        btnTouchCalStart.classList.add('hidden');
+        btnTouchCalStop.classList.remove('hidden');
+    } else {
+        btnTouchCalStart.classList.remove('hidden');
+        btnTouchCalStop.classList.add('hidden');
+    }
+}
+
+function startTouchCalibration() {
+    toggleCalibrationUI(true);
+    sendCommand('TOUCH:CALIBRATE:START');
+}
+
+function stopTouchCalibration() {
+    toggleCalibrationUI(false);
+    sendCommand('TOUCH:CALIBRATE:STOP');
+}
+
+async function saveTouchModule() {
+    if (!currentProject) { alert('Abra um projeto primeiro'); return; }
+
+    const name = touchName.value.trim() || 'Touch Sensor';
+    const pin = parseInt(touchPin.value) || 4;
+    const mode = touchMode.value as 'NATIVE' | 'DIGITAL';
+    const thresh = parseInt(touchThreshold.value) || 40;
+
+    const newModule: ModuleConfig = {
+        id: crypto.randomUUID(),
+        type: 'TOUCH',
+        name,
+        pin,
+        touchConfig: {
+            pin,
+            mode,
+            threshold: thresh
+        }
+    };
+
+    currentProject.modules.push(newModule);
+    await window.projects.save(currentProject);
+    refreshModulesUI();
+    closeTouchModal();
+    addLog(`Módulo Touch "${name}" adicionado!`, 'info');
+}
+
+// Calibration Data Listener
+window.serial.onData((data: string) => {
+    if (isTouchCalibrating && data.startsWith('TOUCH:RAW:')) {
+        const val = data.split(':')[2];
+        if (touchRawVal) touchRawVal.textContent = val.trim();
+    }
+});
+
+if (btnAddTouch) btnAddTouch.addEventListener('click', openTouchModal);
+if (touchModalClose) touchModalClose.addEventListener('click', closeTouchModal);
+if (touchModalCancel) touchModalCancel.addEventListener('click', closeTouchModal);
+if (touchModalConfirm) touchModalConfirm.addEventListener('click', saveTouchModule);
+
+if (touchThreshold) {
+    touchThreshold.addEventListener('input', () => {
+        touchThresholdVal.textContent = touchThreshold.value;
+        // Optionally preview threshold on device if connected?
+    });
+}
+if (btnTouchCalStart) btnTouchCalStart.addEventListener('click', startTouchCalibration);
+if (btnTouchCalStop) btnTouchCalStop.addEventListener('click', stopTouchCalibration);
+
+
 // === NeoPixel Modal Functions ===
 
 // Get New Elements
@@ -2422,6 +2725,7 @@ const neoMaxCurrent = document.getElementById('neo-max-current') as HTMLInputEle
 const neoGamma = document.getElementById('neo-gamma') as HTMLInputElement;
 const neoGammaValue = document.getElementById('neo-gamma-value') as HTMLSpanElement;
 const neoAutoBright = document.getElementById('neo-auto-brightness') as HTMLInputElement;
+const neoTimeBased = document.getElementById('neo-time-based') as HTMLInputElement;
 
 const neoAnimColor = document.getElementById('neo-anim-color') as HTMLInputElement;
 const neoAnimSpeed = document.getElementById('neo-anim-speed') as HTMLInputElement;
@@ -2497,7 +2801,8 @@ function saveNeoPixelModule(): void {
             serpentine: serpentine,
             defaultAnimation: animation,
             transitionSpeed: transitionSpeed,
-            autoBrightness: neoAutoBright?.checked ?? false
+            autoBrightness: neoAutoBright?.checked ?? false,
+            timeBasedBrightness: neoTimeBased?.checked ?? false
         }
     };
 
@@ -2534,6 +2839,10 @@ function renderModulesList() {
         </div>
     `;
 
+    // Clear Input List
+    const modulesInputList = document.getElementById('modules-input-list');
+    if (modulesInputList) modulesInputList.innerHTML = '';
+
     // Re-attach listeners for the cleared buttons since innerHTML wipes them
     document.getElementById('btn-add-wifi-2')?.addEventListener('click', () => { if (wifiModalBackdrop) { wifiModalBackdrop.classList.remove('hidden'); wifiModalBackdrop.style.display = 'flex'; } });
     document.getElementById('btn-add-web-2')?.addEventListener('click', openWebServerModal);
@@ -2553,12 +2862,21 @@ function renderModulesList() {
         else if (typeStr === 'LED' || typeStr === 'NEOPIXEL') icon = '💡';
         else if (typeStr === 'WEB_SERVER') icon = '🌐';
         else if (typeStr === 'MQTT') icon = '🏠';
+        else if (typeStr === 'TOUCH') icon = '👆';
+
+        let detail = `GPIO ${mod.pin}`;
+        if (typeStr === 'TOUCH') {
+            detail = `${mod.touchConfig?.mode} (Thresh: ${mod.touchConfig?.threshold})`;
+        } else if (typeStr === 'NEOPIXEL') {
+            detail = `GPIO ${mod.pin} (${mod.neoPixelConfig?.pixelCount} LEDs)`;
+        }
 
         card.innerHTML = `
             <div class="module-icon">${icon}</div>
             <div class="module-info">
                 <h4>${mod.name}</h4>
-                <p>${mod.type} ${mod.pin ? `(Pin ${mod.pin})` : ''}</p>
+                <p>${typeStr} ${mod.pin ? `(Pin ${mod.pin})` : ''}</p>
+                <small>${detail}</small>
             </div>
             <button class="btn-icon btn-del-mod">✕</button>
         `;
@@ -2573,10 +2891,16 @@ function renderModulesList() {
         // Determine where to append
         if (['WIFI', 'WEB_SERVER', 'MQTT', 'OTA', 'UDP', 'CLOCK', 'TIDE'].includes(typeStr)) {
             modulesConnectivityList?.appendChild(card);
+        } else if (['TOUCH', 'BUTTON', 'PIR', 'ENCODER'].includes(typeStr)) {
+            modulesInputList?.appendChild(card);
         } else {
             modulesOutputList?.appendChild(card);
         }
     });
+
+    if (modulesInputList && modulesInputList.children.length === 0) {
+        modulesInputList.innerHTML = '<div class="empty-module-state">Nenhum sensor configurado.</div>';
+    }
     refreshAutomationUI();
 }
 
@@ -3102,7 +3426,8 @@ async function testOpenMeteoAPI() {
     const lat = parseFloat((document.getElementById('openmeteo-lat') as HTMLInputElement)?.value) || -14.79;
     const lon = parseFloat((document.getElementById('openmeteo-lon') as HTMLInputElement)?.value) || -39.03;
 
-    addLog(`🌤️ Testando Open - Meteo API: ${lat}, ${lon}...`, 'sent');
+    showToast(`Testando Open-Meteo... Lat: ${lat}, Lon: ${lon}`, 'info');
+    addLog(`🌤️ Testando Open-Meteo API: ${lat}, ${lon}...`, 'sent');
 
     try {
         const result = await externalAPI.getWeather(lat, lon);
@@ -3116,30 +3441,35 @@ async function testOpenMeteoAPI() {
             const condEl = document.getElementById('openmeteo-condition');
 
             if (tempEl) tempEl.textContent = `${result.data.temperature}°C`;
-            if (windEl) windEl.textContent = `${result.data.windSpeed} km / h`;
+            if (windEl) windEl.textContent = `${result.data.windSpeed} km/h`;
 
             const weather = weatherCodeMap[result.data.weatherCode] || { desc: 'Desconhecido', icon: '❓' };
-            if (condEl) condEl.textContent = `${weather.icon} ${weather.desc} `;
+            if (condEl) condEl.textContent = `${weather.icon} ${weather.desc}`;
 
             // Update status
             updateAPIStatus('openmeteo', 'ok', 'agora');
 
-            addLog(`✅ Open - Meteo: ${result.data.temperature}°C, ${weather.desc}, Vento ${result.data.windSpeed} km / h`, 'received');
+            const msg = `Temp: ${result.data.temperature}°C, ${weather.desc}`;
+            showToast(msg, 'success', 'Open-Meteo Sucesso');
+            addLog(`✅ Open-Meteo: ${msg}`, 'received');
 
             // Sync to device
             await syncAPIDataToDevice();
         } else {
             updateAPIStatus('openmeteo', 'error', result.error || 'Erro');
-            addLog(`❌ Open - Meteo erro: ${result.error} `, 'error');
+            showToast(`Erro: ${result.error}`, 'error', 'Open-Meteo Falhou');
+            addLog(`❌ Open-Meteo erro: ${result.error}`, 'error');
         }
     } catch (e: any) {
-        addLog(`❌ Open - Meteo falha: ${e.message} `, 'error');
+        showToast(`Falha: ${e.message}`, 'error', 'Open-Meteo Falhou');
+        addLog(`❌ Open-Meteo falha: ${e.message}`, 'error');
     }
 }
 
 async function testTideAPI() {
     const porto = (document.getElementById('tide-api-porto') as HTMLSelectElement)?.value || '8';
 
+    showToast(`Testando API de Marés (Porto ${porto})...`, 'info');
     addLog(`🌊 Testando API de Marés: Porto ${porto}...`, 'sent');
 
     try {
@@ -3153,7 +3483,7 @@ async function testTideAPI() {
             const nextHighEl = document.getElementById('tide-next-high');
             const nextLowEl = document.getElementById('tide-next-low');
 
-            if (levelEl) levelEl.textContent = `${result.data.level}% `;
+            if (levelEl) levelEl.textContent = `${result.data.level}%`;
             if (nextHighEl) nextHighEl.textContent = result.data.nextHigh;
             if (nextLowEl) nextLowEl.textContent = result.data.nextLow;
 
@@ -3161,20 +3491,25 @@ async function testTideAPI() {
             updateAPIStatus('tide', 'ok', 'agora');
 
             const trendIcon = result.data.isRising ? '↗' : '↘';
-            addLog(`✅ Maré: ${result.data.level}% ${trendIcon} Próx.alta: ${result.data.nextHigh} `, 'received');
+            const msg = `Nível: ${result.data.level}% ${trendIcon}, Próx Alta: ${result.data.nextHigh}`;
+            showToast(msg, 'success', 'Maré Sucesso');
+            addLog(`✅ Maré: ${msg}`, 'received');
 
             // Sync to device
             await syncAPIDataToDevice();
         } else {
             updateAPIStatus('tide', 'error', result.error || 'Erro');
-            addLog(`❌ Maré erro: ${result.error} `, 'error');
+            showToast(`Erro: ${result.error}`, 'error', 'Maré Falhou');
+            addLog(`❌ Maré erro: ${result.error}`, 'error');
         }
     } catch (e: any) {
-        addLog(`❌ Maré falha: ${e.message} `, 'error');
+        showToast(`Falha: ${e.message}`, 'error', 'Maré Falhou');
+        addLog(`❌ Maré falha: ${e.message}`, 'error');
     }
 }
 
 async function testMoonAPI() {
+    showToast(`Obtendo fase da Lua...`, 'info');
     addLog(`🌙 Obtendo fase da Lua...`, 'sent');
 
     try {
@@ -3182,12 +3517,16 @@ async function testMoonAPI() {
 
         if (result.success && result.data) {
             currentMoonData = result.data;
-            addLog(`✅ Lua: ${result.data.phaseIcon} ${result.data.phaseName} (${result.data.illumination}% iluminação)`, 'received');
+            const msg = `${result.data.phaseIcon} ${result.data.phaseName} (${result.data.illumination}%)`;
+            showToast(msg, 'success', 'Lua Sucesso');
+            addLog(`✅ Lua: ${msg}`, 'received');
         } else {
-            addLog(`❌ Lua erro: ${result.error} `, 'error');
+            showToast(`Erro: ${result.error}`, 'error', 'Lua Falhou');
+            addLog(`❌ Lua erro: ${result.error}`, 'error');
         }
     } catch (e: any) {
-        addLog(`❌ Lua falha: ${e.message} `, 'error');
+        showToast(`Falha: ${e.message}`, 'error', 'Lua Falhou');
+        addLog(`❌ Lua falha: ${e.message}`, 'error');
     }
 }
 
@@ -3452,11 +3791,11 @@ if (timerModalCancel) timerModalCancel.addEventListener('click', () => timerModa
 
 if (timerModalConfirm) {
     timerModalConfirm.addEventListener('click', async () => {
-        const time = timerTime.value;
-        const command = timerCommand.value.trim();
+        const time = (document.getElementById('timer-time') as HTMLInputElement).value; // HH:MM
+        const command = (document.getElementById('timer-command') as HTMLInputElement).value.trim();
 
         if (!time || !command) {
-            alert('Preencha tempo e comando');
+            alert('Preencha horário e comando');
             return;
         }
 
@@ -3466,7 +3805,134 @@ if (timerModalConfirm) {
 
         await saveAutomation();
         timerModalBackdrop?.classList.add('hidden');
-        timerTime.value = '';
-        timerCommand.value = '';
     });
 }
+
+// === SERVO FUNCTIONS (Phase 15) ===
+
+function openServoModal() {
+    if (!modalServoBackdrop) return;
+
+    // Default or Reset Values
+    modalServoTitle.textContent = '🦾 Configurar Servo';
+    inpServoName.value = `Servo ${currentProject ? currentProject.modules.filter(m => m.type === 'SERVO').length + 1 : 1}`;
+    inpServoPin.value = '13';
+    selServoType.value = '180';
+    inpServoMinPulse.value = '500';
+    inpServoMaxPulse.value = '2500';
+
+    // Auto Control
+    selServoSource.value = 'NONE';
+    divServoMapping.classList.add('hidden');
+
+    // Auto Mapping Defaults
+    inpServoMapInMin.value = '0';
+    inpServoMapInMax.value = '100';
+    inpServoMapOutMin.value = '0';
+    inpServoMapOutMax.value = '180';
+
+    modalServoBackdrop.classList.remove('hidden');
+    modalServoBackdrop.style.display = 'flex';
+}
+
+function closeServoModal() {
+    if (modalServoBackdrop) {
+        modalServoBackdrop.classList.add('hidden');
+        modalServoBackdrop.style.display = 'none';
+    }
+}
+
+async function saveServoModule() {
+    if (!currentProject) return;
+
+    const name = inpServoName.value.trim();
+    if (!name) return alert('Nome é obrigatório');
+
+    const pin = parseInt(inpServoPin.value);
+    const minPulse = parseInt(inpServoMinPulse.value);
+    const maxPulse = parseInt(inpServoMaxPulse.value);
+
+    if (isNaN(pin) || isNaN(minPulse) || isNaN(maxPulse)) {
+        return alert('Valores numéricos inválidos');
+    }
+
+    // Auto Control
+    const autoControl = selServoSource.value as any;
+    let mapInMin = 0, mapInMax = 100, mapOutMin = 0, mapOutMax = 180;
+
+    if (autoControl !== 'NONE') {
+        mapInMin = parseFloat(inpServoMapInMin.value);
+        mapInMax = parseFloat(inpServoMapInMax.value);
+        mapOutMin = parseFloat(inpServoMapOutMin.value);
+        mapOutMax = parseFloat(inpServoMapOutMax.value);
+
+        if (isNaN(mapInMin) || isNaN(mapInMax) || isNaN(mapOutMin) || isNaN(mapOutMax)) {
+            return alert('Valores de mapeamento inválidos');
+        }
+    }
+
+    const config: any = {
+        pin,
+        type: selServoType.value as '180' | '360',
+        minPulse,
+        maxPulse,
+        startAngle: 0,
+        autoControl,
+        minInput: mapInMin,
+        maxInput: mapInMax,
+        minOutputAngle: mapOutMin,
+        maxOutputAngle: mapOutMax
+    };
+
+    const newModule: ModuleConfig = {
+        id: crypto.randomUUID(),
+        type: 'SERVO',
+        name,
+        pin,
+        servoConfig: config
+    };
+
+    currentProject.modules.push(newModule);
+    await window.projects.save(currentProject);
+    renderModulesList();
+    closeServoModal();
+    showToast('Servo adicionado com sucesso', 'success');
+}
+
+// === EVENT LISTENERS SETUP FOR SERVO ===
+// Called manually here since we are at end of script
+if (btnAddServo) btnAddServo.addEventListener('click', openServoModal);
+if (modalServoClose) modalServoClose.addEventListener('click', closeServoModal);
+if (modalServoCancel) modalServoCancel.addEventListener('click', closeServoModal);
+if (modalServoConfirm) modalServoConfirm.addEventListener('click', saveServoModule);
+
+// Auto-Control Logic
+if (selServoSource) {
+    selServoSource.addEventListener('change', () => {
+        const source = selServoSource.value;
+        if (source === 'NONE') {
+            divServoMapping.classList.add('hidden');
+        } else {
+            divServoMapping.classList.remove('hidden');
+            // Auto presets
+            if (source === 'TIDE_LEVEL') {
+                if (document.getElementById('servo-hint-in-min')) document.getElementById('servo-hint-in-min')!.textContent = 'ex: 0%';
+                if (document.getElementById('servo-hint-in-max')) document.getElementById('servo-hint-in-max')!.textContent = 'ex: 100%';
+                inpServoMapInMin.value = '0';
+                inpServoMapInMax.value = '100';
+            } else if (source === 'TIDE_TREND') {
+                if (document.getElementById('servo-hint-in-min')) document.getElementById('servo-hint-in-min')!.textContent = 'ex: -1.0';
+                if (document.getElementById('servo-hint-in-max')) document.getElementById('servo-hint-in-max')!.textContent = 'ex: 1.0';
+                inpServoMapInMin.value = '-1';
+                inpServoMapInMax.value = '1';
+                // Center servo
+                const type = selServoType.value;
+                const mid = type === '180' ? 90 : 0;
+                inpServoMapOutMin.value = '0';
+                inpServoMapOutMax.value = '180';
+            }
+        }
+    });
+}
+
+

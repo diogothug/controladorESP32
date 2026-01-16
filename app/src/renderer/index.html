@@ -8,6 +8,7 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
   <title>Serial Control</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles-console.css">
 </head>
 
 <body>
@@ -598,15 +599,18 @@
             </div>
           </div>
 
-          <!-- Device Info Card (when connected) -->
-          <div class="card glass-card" id="device-info-card">
+          <!-- Quick Actions Panel -->
+          <div class="card glass-card quick-actions-card">
             <div class="card-header">
-              <h3>📟 Dispositivo</h3>
+              <h3>⚡ Ações Rápidas</h3>
             </div>
-            <div class="card-body">
-              <div id="device-info-content">
-                <p class="hint">Conecte um dispositivo para ver informações.</p>
-              </div>
+            <div class="card-body quick-actions-grid">
+              <button class="btn btn-soft" data-cmd="SYS:INFO">ℹ️ Info</button>
+              <button class="btn btn-soft" data-cmd="WIFI:STATUS">📶 WiFi</button>
+              <button class="btn btn-soft" data-cmd="TIDE:STATUS">🌊 Maré</button>
+              <button class="btn btn-soft" data-cmd="SYS:REBOOT">🔄 Reboot</button>
+              <button class="btn btn-soft" data-cmd="NEO:MainStrip:ON">💡 LED On</button>
+              <button class="btn btn-soft" data-cmd="NEO:MainStrip:OFF">🌑 LED Off</button>
             </div>
           </div>
 
@@ -619,11 +623,43 @@
                 <button id="export-log-btn" class="btn btn-xs">Exportar</button>
               </div>
             </div>
-            <div class="card-body">
-              <div id="log-output" class="log-output"></div>
-              <div class="command-input-row">
-                <input type="text" id="command-input" class="command-input" placeholder="Digite um comando...">
-                <button id="send-btn" class="btn btn-primary">Enviar</button>
+            <div class="card-body terminal-layout">
+              <!-- Command List Sidebar -->
+              <div class="command-ref-sidebar">
+                <h4>Comandos</h4>
+                <div class="cmd-list">
+                  <details>
+                    <summary>Sistema</summary>
+                    <div class="cmd-item" data-cmd="SYS:HELLO">Handshake</div>
+                    <div class="cmd-item" data-cmd="SYS:INFO">Info Sistema</div>
+                    <div class="cmd-item" data-cmd="SYS:REBOOT">Reiniciar</div>
+                  </details>
+                  <details>
+                    <summary>WiFi</summary>
+                    <div class="cmd-item" data-cmd="WIFI:STATUS">Status</div>
+                    <div class="cmd-item" data-cmd="WIFI:SCAN">Escanear</div>
+                    <div class="cmd-item" data-cmd="WIFI:IP">Mostrar IP</div>
+                  </details>
+                  <details>
+                    <summary>Maré (Tide)</summary>
+                    <div class="cmd-item" data-cmd="TIDE:STATUS">Status</div>
+                    <div class="cmd-item" data-cmd="TIDE:FETCH">Forçar Sync</div>
+                  </details>
+                  <details>
+                    <summary>LEDs</summary>
+                    <div class="cmd-item" data-cmd="NEO:MainStrip:ON">Ligar</div>
+                    <div class="cmd-item" data-cmd="NEO:MainStrip:OFF">Desligar</div>
+                    <div class="cmd-item" data-cmd="NEO:MainStrip:ANIM:RAINBOW">Arco-íris</div>
+                  </details>
+                </div>
+              </div>
+
+              <div class="terminal-main">
+                <div id="log-output" class="log-output"></div>
+                <div class="command-input-row">
+                  <input type="text" id="command-input" class="command-input" placeholder="Digite um comando...">
+                  <button id="send-btn" class="btn btn-primary">Enviar</button>
+                </div>
               </div>
             </div>
           </div>
@@ -653,6 +689,17 @@
                     <option value="ring">Ring/Anel</option>
                   </select>
                 </div>
+                <div class="form-group">
+                  <label>Preset</label>
+                  <select id="hw-preset" class="form-select">
+                    <option value="custom">Custom</option>
+                    <option value="8x8">8x8 Matrix</option>
+                    <option value="16x16">16x16 Matrix</option>
+                    <option value="32x8">8x32 Vertical Matrix</option>
+                    <option value="60led">Strip 60 LEDs (Vert)</option>
+                    <option value="12ring">Ring 12 LEDs</option>
+                  </select>
+                </div>
                 <div class="form-row">
                   <div class="form-group"><label>W</label><input type="number" id="hw-width" class="form-input"
                       value="8" min="1" max="64"></div>
@@ -660,10 +707,10 @@
                       value="8" min="1" max="64"></div>
                 </div>
                 <div class="form-group">
-                  <label>Chip</label>
+                  <label>Chip / Formato</label>
                   <select id="hw-chip" class="form-select">
-                    <option value="ws2812b">WS2812B</option>
-                    <option value="sk6812">SK6812 RGBW</option>
+                    <option value="ws2812b">WS2812B (Circle)</option>
+                    <option value="sk6812">SK6812 (Square)</option>
                   </select>
                 </div>
                 <button id="hw-apply" class="btn btn-primary btn-block">✅ Aplicar</button>
@@ -803,6 +850,9 @@
                       <option value="wave">🌊 Ondulação</option>
                       <option value="gradient">🎨 Gradiente</option>
                       <option value="pulse">💓 Pulsação</option>
+                      <option value="surfer">🏄 Surfer (Easter Egg)</option>
+                      <option value="storm">⚡ Tempestade (Alerta)</option>
+                      <option value="moon">🌕 Lua Calma</option>
                     </select>
                   </div>
                   <div class="form-group">
@@ -818,551 +868,583 @@
                       <option value="3">Porto 3 - Recife, PE</option>
                       <option value="4">Porto 4 - Natal, RN</option>
                       <option value="5">Porto 5 - Fortaleza, CE</option>
-                      <option value="6">Porto 6 - São Luís, MA</option>
-                      <option value="7">Porto 7 - Belém, PA</option>
                     </select>
                   </div>
 
-                  <!-- Proportional Mode - TideDisplay inspired -->
-                  <div class="form-group">
-                    <label class="toggle-switch-sm" title="Modo proporcional 1:1 - altura real na tira LED">
-                      <input type="checkbox" id="tide-proportional">
-                      <span class="toggle-slider-sm"></span>
-                      <span>📏 Proporcional 1:1</span>
-                    </label>
+                  <!-- Weather/Trend Configs Placeholder -->
+                  <div id="trend-config" class="data-config" style="display:none;">
+                    <small>Previsão baseada em dados reais</small>
                   </div>
-
-                  <!-- Real-time Level Indicator -->
-                  <div class="tide-indicator" id="tide-indicator">
-                    <div class="tide-gauge">
-                      <div class="tide-level" id="tide-level-bar" style="height: 50%"></div>
-                      <div class="tide-arrow" id="tide-arrow">▲</div>
-                    </div>
-                    <div class="tide-stats">
-                      <div class="tide-stat">
-                        <span class="stat-label">Nível</span>
-                        <span class="stat-value" id="tide-current-level">50%</span>
-                      </div>
-                      <div class="tide-stat">
-                        <span class="stat-label">Trend</span>
-                        <span class="stat-value" id="tide-trend">↗ Subindo</span>
-                      </div>
-                      <div class="tide-stat">
-                        <span class="stat-label">Próx. Alta</span>
-                        <span class="stat-value" id="tide-next-high">--:--</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="form-group">
-                    <label>Atualizar</label>
-                    <select id="tide-interval" class="form-select">
-                      <option value="15">15 min</option>
-                      <option value="30" selected>30 min</option>
-                      <option value="60">1 hora</option>
-                    </select>
-                  </div>
-                  <button id="apply-tide" class="btn btn-primary btn-block">✅ Aplicar Maré</button>
-                </div>
-
-                <!-- Trend Config -->
-                <div id="trend-config" class="data-config hidden">
-                  <h4>📈 Configurar Trend</h4>
-                  <div class="color-config">
-                    <label>📈 Alta:</label>
-                    <input type="color" id="trend-up-color" value="#00FF00">
-                    <label>📉 Baixa:</label>
-                    <input type="color" id="trend-down-color" value="#FF0000">
-                  </div>
-                  <div class="form-group">
-                    <label>Símbolo (ex: BTC)</label>
-                    <input type="text" id="trend-symbol" class="form-input" value="BTC">
-                  </div>
-                  <button id="apply-trend" class="btn btn-primary btn-block">✅ Aplicar Trend</button>
                 </div>
               </div>
+
+              <!-- System Animations -->
+              <div class="card glass-card">
+                <div class="card-header">
+                  <h3>🖥️ Sistema</h3>
+                </div>
+                <div class="card-body">
+                  <div class="system-anims-list">
+                    <button class="effect-btn" data-anim="sys-boot">🚀 Boot</button>
+                    <button class="effect-btn" data-anim="sys-wifi">📶 WiFi Config</button>
+                    <button class="effect-btn" data-anim="sys-error">⚠️ Erro Crítico</button>
+                    <button class="effect-btn" data-anim="sys-success">✅ Sucesso</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card glass-card">
+                <div class="card-header">
+                  <h3>📤 Exportar</h3>
+                </div>
+                <div class="card-body">
+                  <button id="btn-export-anim-h" class="btn btn-primary btn-block">💾 Salvar .h (C++)</button>
+                  <div id="export-stats" class="export-stats">
+                    <small>Tamanho estimado: <span id="anim-size">0</span> bytes</small>
+                  </div>
+                </div>
+              </div>
+              <option value="6">Porto 6 - São Luís, MA</option>
+              <option value="7">Porto 7 - Belém, PA</option>
+              </select>
             </div>
-            <div class="card glass-card">
-              <div class="card-header">
-                <h3>💡 Brilho</h3>
+
+            <!-- Proportional Mode - TideDisplay inspired -->
+            <div class="form-group">
+              <label class="toggle-switch-sm" title="Modo proporcional 1:1 - altura real na tira LED">
+                <input type="checkbox" id="tide-proportional">
+                <span class="toggle-slider-sm"></span>
+                <span>📏 Proporcional 1:1</span>
+              </label>
+            </div>
+
+            <!-- Real-time Level Indicator -->
+            <div class="tide-indicator" id="tide-indicator">
+              <div class="tide-gauge">
+                <div class="tide-level" id="tide-level-bar" style="height: 50%"></div>
+                <div class="tide-arrow" id="tide-arrow">▲</div>
               </div>
-              <div class="card-body">
-                <input type="range" id="brightness-slider" class="slider" min="0" max="100" value="100">
-                <span id="brightness-value">100%</span>
+              <div class="tide-stats">
+                <div class="tide-stat">
+                  <span class="stat-label">Nível</span>
+                  <span class="stat-value" id="tide-current-level">50%</span>
+                </div>
+                <div class="tide-stat">
+                  <span class="stat-label">Trend</span>
+                  <span class="stat-value" id="tide-trend">↗ Subindo</span>
+                </div>
+                <div class="tide-stat">
+                  <span class="stat-label">Próx. Alta</span>
+                  <span class="stat-value" id="tide-next-high">--:--</span>
+                </div>
               </div>
             </div>
-            <div class="card glass-card">
-              <div class="card-header">
-                <h3>📤 Exportar</h3>
-              </div>
-              <div class="card-body">
-                <button id="export-micropython" class="btn btn-primary btn-block">🐍 MicroPython</button>
-                <button id="export-arduino" class="btn btn-secondary btn-block">⚡ Arduino</button>
-                <button id="export-json" class="btn btn-soft btn-block">📄 JSON</button>
-                <hr>
-                <button id="send-to-device" class="btn btn-glow btn-block">📡 Enviar ESP32</button>
-              </div>
+
+            <div class="form-group">
+              <label>Atualizar</label>
+              <select id="tide-interval" class="form-select">
+                <option value="15">15 min</option>
+                <option value="30" selected>30 min</option>
+                <option value="60">1 hora</option>
+              </select>
             </div>
-          </aside>
+            <button id="apply-tide" class="btn btn-primary btn-block">✅ Aplicar Maré</button>
+        </div>
+
+        <!-- Trend Config -->
+        <div id="trend-config" class="data-config hidden">
+          <h4>📈 Configurar Trend</h4>
+          <div class="color-config">
+            <label>📈 Alta:</label>
+            <input type="color" id="trend-up-color" value="#00FF00">
+            <label>📉 Baixa:</label>
+            <input type="color" id="trend-down-color" value="#FF0000">
+          </div>
+          <div class="form-group">
+            <label>Símbolo (ex: BTC)</label>
+            <input type="text" id="trend-symbol" class="form-input" value="BTC">
+          </div>
+          <button id="apply-trend" class="btn btn-primary btn-block">✅ Aplicar Trend</button>
         </div>
       </div>
+  </div>
+  <div class="card glass-card">
+    <div class="card-header">
+      <h3>💡 Brilho</h3>
+    </div>
+    <div class="card-body">
+      <input type="range" id="brightness-slider" class="slider" min="0" max="100" value="100">
+      <span id="brightness-value">100%</span>
+    </div>
+  </div>
+  <div class="card glass-card">
+    <div class="card-header">
+      <h3>📤 Exportar</h3>
+    </div>
+    <div class="card-body">
+      <button id="export-micropython" class="btn btn-primary btn-block">🐍 MicroPython</button>
+      <button id="export-arduino" class="btn btn-secondary btn-block">⚡ Arduino</button>
+      <button id="export-json" class="btn btn-soft btn-block">📄 JSON</button>
+      <hr>
+      <button id="send-to-device" class="btn btn-glow btn-block">📡 Enviar ESP32</button>
+    </div>
+  </div>
+  </aside>
+  </div>
+  </div>
 
-      <!-- VIEW: FIRMWARE -->
-      <div id="view-firmware" class="view-section" style="display: none;">
-        <header class="top-bar">
-          <h2>⚙️ Firmware</h2>
-        </header>
-        <div class="firmware-grid">
-          <!-- Tools Status -->
-          <div class="card glass-card">
-            <div class="card-header">
-              <h3>🔧 Ferramentas</h3>
-              <div class="status-pills">
-                <span class="pill" id="tool-arduino">Arduino CLI</span>
-                <span class="pill" id="tool-ampy">ampy</span>
-              </div>
-            </div>
-            <div class="card-body">
-              <div class="btn-row">
-                <button id="btn-web-install" class="btn btn-primary">🌐 Web Installer</button>
-                <button id="btn-browse-templates" class="btn btn-secondary">📋 Templates</button>
-              </div>
-            </div>
+  <!-- VIEW: FIRMWARE -->
+  <div id="view-firmware" class="view-section" style="display: none;">
+    <header class="top-bar">
+      <h2>⚙️ Firmware</h2>
+    </header>
+    <div class="firmware-grid">
+      <!-- Tools Status -->
+      <div class="card glass-card">
+        <div class="card-header">
+          <h3>🔧 Ferramentas</h3>
+          <div class="status-pills">
+            <span class="pill" id="tool-arduino">Arduino CLI</span>
+            <span class="pill" id="tool-ampy">ampy</span>
           </div>
-
-          <!-- Connectivity Modules -->
-          <div class="card glass-card">
-            <div class="card-header">
-              <h3>🌐 Conectividade</h3>
-            </div>
-            <div class="card-body">
-              <div class="btn-row">
-                <button id="btn-add-wifi" class="btn btn-soft">📶 WiFi & NTP</button>
-                <button id="btn-add-web-server" class="btn btn-soft">🌐 Web Server</button>
-                <button id="btn-add-mqtt" class="btn btn-soft">🏠 MQTT</button>
-                <button id="btn-add-ota" class="btn btn-soft">☁️ OTA</button>
-                <button id="btn-add-udp" class="btn btn-soft">⚡ UDP Stream</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Firmware Generator -->
-          <div class="card glass-card firmware-editor-card">
-            <div class="card-header">
-              <h3>📝 Gerador de Firmware</h3>
-            </div>
-            <div class="card-body">
-              <div class="firmware-controls">
-                <div class="control-row">
-                  <select id="template-select" class="select-input">
-                    <option value="">Selecione um template...</option>
-                  </select>
-                  <button id="load-template-btn" class="btn btn-soft">Carregar</button>
-                </div>
-                <div class="control-row">
-                  <select id="fw-platform" class="select-input">
-                    <option value="micropython" selected>ESP32 (μPy)</option>
-                    <option value="arduino">Arduino (C++)</option>
-                  </select>
-                  <button id="btn-generate-fw" class="btn btn-primary">✨ Gerar</button>
-                </div>
-              </div>
-              <textarea id="code-editor" class="code-editor" placeholder="// Código será gerado aqui..."></textarea>
-              <div class="editor-footer">
-                <span id="current-file" class="file-badge">-</span>
-                <div class="btn-group">
-                  <button id="btn-save-fw" class="btn btn-soft">💾 Salvar</button>
-                  <button id="btn-compile-fw" class="btn btn-secondary">🔨 Compilar</button>
-                  <button id="btn-upload-fw" class="btn btn-primary">📤 Upload</button>
-                </div>
-              </div>
-            </div>
+        </div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button id="btn-web-install" class="btn btn-primary">🌐 Web Installer</button>
+            <button id="btn-browse-templates" class="btn btn-secondary">📋 Templates</button>
           </div>
         </div>
       </div>
 
-      <div class="board-content-wrapper" style="display: none;">
+      <!-- Connectivity Modules -->
+      <div class="card glass-card">
+        <div class="card-header">
+          <h3>🌐 Conectividade</h3>
+        </div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button id="btn-add-wifi" class="btn btn-soft">📶 WiFi & NTP</button>
+            <button id="btn-add-web-server" class="btn btn-soft">🌐 Web Server</button>
+            <button id="btn-add-mqtt" class="btn btn-soft">🏠 MQTT</button>
+            <button id="btn-add-ota" class="btn btn-soft">☁️ OTA</button>
+            <button id="btn-add-udp" class="btn btn-soft">⚡ UDP Stream</button>
+          </div>
+        </div>
+      </div>
 
-        <!-- SUB-VIEW: DASHBOARD -->
-        <div id="tab-dashboard" class="tab-content active">
-          <div class="dashboard-grid">
-            <!-- Connection Card -->
-            <div class="card connection-card">
-              <div class="card-header">
-                <h3>Conexão</h3>
-              </div>
-              <div class="card-body">
-                <div class="control-group">
-                  <select id="port-select" class="select-input">
-                    <option value="">Select Port...</option>
-                  </select>
-                  <div class="btn-group">
-                    <button id="refresh-btn" class="btn btn-icon" title="Refresh">
-                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
-                        fill="none">
-                        <path d="M23 4v6h-6"></path>
-                        <path d="M1 20v-6h6"></path>
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                      </svg>
-                    </button>
-                    <button id="connect-btn" class="btn btn-primary">Connect</button>
-                  </div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="auto-reconnect">
-                  <span class="toggle-slider"></span>
-                  <span class="toggle-label">Auto-reconnect</span>
-                </label>
+      <!-- Firmware Generator -->
+      <div class="card glass-card firmware-editor-card">
+        <div class="card-header">
+          <h3>📝 Gerador de Firmware</h3>
+        </div>
+        <div class="card-body">
+          <div class="firmware-controls">
+            <div class="control-row">
+              <select id="template-select" class="select-input">
+                <option value="">Selecione um template...</option>
+              </select>
+              <button id="load-template-btn" class="btn btn-soft">Carregar</button>
+            </div>
+            <div class="control-row">
+              <select id="fw-platform" class="select-input">
+                <option value="micropython" selected>ESP32 (μPy)</option>
+                <option value="arduino">Arduino (C++)</option>
+              </select>
+              <button id="btn-generate-fw" class="btn btn-primary">✨ Gerar</button>
+            </div>
+          </div>
+          <textarea id="code-editor" class="code-editor" placeholder="// Código será gerado aqui..."></textarea>
+          <div class="editor-footer">
+            <span id="current-file" class="file-badge">-</span>
+            <div class="btn-group">
+              <button id="btn-save-fw" class="btn btn-soft">💾 Salvar</button>
+              <button id="btn-compile-fw" class="btn btn-secondary">🔨 Compilar</button>
+              <button id="btn-upload-fw" class="btn btn-primary">📤 Upload</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board-content-wrapper" style="display: none;">
+
+    <!-- SUB-VIEW: DASHBOARD -->
+    <div id="tab-dashboard" class="tab-content active">
+      <div class="dashboard-grid">
+        <!-- Connection Card -->
+        <div class="card connection-card">
+          <div class="card-header">
+            <h3>Conexão</h3>
+          </div>
+          <div class="card-body">
+            <div class="control-group">
+              <select id="port-select" class="select-input">
+                <option value="">Select Port...</option>
+              </select>
+              <div class="btn-group">
+                <button id="refresh-btn" class="btn btn-icon" title="Refresh">
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                    <path d="M23 4v6h-6"></path>
+                    <path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+                <button id="connect-btn" class="btn btn-primary">Connect</button>
               </div>
             </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="auto-reconnect">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">Auto-reconnect</span>
+            </label>
+          </div>
+        </div>
 
-            <!-- Quick Actions -->
-            <div class="card actions-card">
-              <div class="card-header">
-                <h3>Ações Rápidas</h3>
+        <!-- Quick Actions -->
+        <div class="card actions-card">
+          <div class="card-header">
+            <h3>Ações Rápidas</h3>
+          </div>
+          <div class="card-body quick-actions-grid" id="quick-commands">
+            <button class="btn btn-soft" data-cmd="STATUS">Status</button>
+
+            <!-- Dynamic Actions -->
+            <div id="arduino-commands" class="dynamic-actions hidden">
+              <button class="btn btn-soft" data-cmd="PIN:13,HIGH">LED On (13)</button>
+              <button class="btn btn-soft" data-cmd="PIN:13,LOW">LED Off (13)</button>
+              <button class="btn btn-soft" data-cmd="READ:A0">Read A0</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:255,0,0">NeoPixel (2)</button>
+            </div>
+            <div id="esp-commands" class="dynamic-actions hidden">
+              <button class="btn btn-soft" data-cmd="PIN:2,HIGH">LED On (2)</button>
+              <button class="btn btn-soft" data-cmd="PIN:2,LOW">LED Off (2)</button>
+              <button class="btn btn-soft" data-cmd="SYS:HELLO">Sys Info</button>
+              <button class="btn btn-soft" data-cmd="WIFI:SCAN">Scan WiFi</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:0:30,0,0">Pixel 0 (Vermelho Fraco)</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:1:0,30,0">Pixel 1 (Verde Fraco)</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:8:0,0,30">Pixel 8 (Azul Fraco)</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:63:30,30,30">Pixel 63 (Branco Fraco)</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:RAINBOW">🌈 Rainbow</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:FIRE">🔥 Fogo</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:PARTICLE">⚡ Partículas</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:PLASMA">🔮 Plasma</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:SPARKLE">✨ Sparkle</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:BOUNCE">🏀 Bounce</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:CHASE">🏃 Chase</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:COMET">☄️ Cometa</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:GRADIENT">🎨 Gradient</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:BREATHE">💨 Respirar</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:AURORA">🌌 Aurora</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:WAVE">🌊 Onda</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:ANIM:FISH">🐠 Peixe</button>
+              <button class="btn btn-soft" data-cmd="NEO:2:CLEAR">❌ Apagar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dimmer Control Card -->
+        <div class="card glass-card dimmer-card">
+          <div class="card-header">
+            <h3>💡 Dimmer</h3>
+          </div>
+          <div class="card-body">
+            <div class="dimmer-slider-row">
+              <input type="range" id="brightness-slider" class="brightness-slider" min="0" max="100" value="100">
+              <span id="brightness-value" class="brightness-value">100%</span>
+            </div>
+            <div class="fade-duration-row">
+              <label>Fade:</label>
+              <select id="fade-duration" class="form-select-sm">
+                <option value="0">Instant</option>
+                <option value="500">0.5s</option>
+                <option value="1000" selected>1s</option>
+                <option value="2000">2s</option>
+                <option value="5000">5s</option>
+              </select>
+            </div>
+            <div class="quick-brightness-btns">
+              <button class="btn btn-xs btn-soft" data-brightness="25">25%</button>
+              <button class="btn btn-xs btn-soft" data-brightness="50">50%</button>
+              <button class="btn btn-xs btn-soft" data-brightness="75">75%</button>
+              <button class="btn btn-xs btn-soft" data-brightness="100">100%</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- LED Preview Panel -->
+        <div class="card glass-card led-preview-card">
+          <div class="card-header">
+            <h3>💡 LED Preview</h3>
+            <div class="preview-controls">
+              <select id="preview-layout" class="form-select-sm">
+                <option value="matrix">Matrix</option>
+                <option value="strip">Strip</option>
+                <option value="ring">Ring</option>
+              </select>
+              <label class="toggle-switch-sm">
+                <input type="checkbox" id="preview-glow" checked>
+                <span class="toggle-slider-sm"></span>
+                <span>Glow</span>
+              </label>
+            </div>
+          </div>
+          <div class="card-body led-preview-body">
+            <canvas id="led-preview-canvas" class="led-preview-canvas"></canvas>
+            <div class="preview-size-controls">
+              <div class="size-input-group">
+                <label>W:</label>
+                <input type="number" id="preview-width" class="form-input-xs" value="8" min="1" max="64">
               </div>
-              <div class="card-body quick-actions-grid" id="quick-commands">
-                <button class="btn btn-soft" data-cmd="STATUS">Status</button>
+              <div class="size-input-group">
+                <label>H:</label>
+                <input type="number" id="preview-height" class="form-input-xs" value="8" min="1" max="64">
+              </div>
+              <button id="preview-test-rainbow" class="btn btn-xs btn-soft">🌈 Test</button>
+              <button id="preview-clear" class="btn btn-xs btn-soft">Clear</button>
+            </div>
+          </div>
+        </div>
 
-                <!-- Dynamic Actions -->
-                <div id="arduino-commands" class="dynamic-actions hidden">
-                  <button class="btn btn-soft" data-cmd="PIN:13,HIGH">LED On (13)</button>
-                  <button class="btn btn-soft" data-cmd="PIN:13,LOW">LED Off (13)</button>
-                  <button class="btn btn-soft" data-cmd="READ:A0">Read A0</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:255,0,0">NeoPixel (2)</button>
-                </div>
-                <div id="esp-commands" class="dynamic-actions hidden">
-                  <button class="btn btn-soft" data-cmd="PIN:2,HIGH">LED On (2)</button>
-                  <button class="btn btn-soft" data-cmd="PIN:2,LOW">LED Off (2)</button>
-                  <button class="btn btn-soft" data-cmd="SYS:HELLO">Sys Info</button>
-                  <button class="btn btn-soft" data-cmd="WIFI:SCAN">Scan WiFi</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:0:30,0,0">Pixel 0 (Vermelho Fraco)</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:1:0,30,0">Pixel 1 (Verde Fraco)</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:8:0,0,30">Pixel 8 (Azul Fraco)</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:63:30,30,30">Pixel 63 (Branco Fraco)</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:RAINBOW">🌈 Rainbow</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:FIRE">🔥 Fogo</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:PARTICLE">⚡ Partículas</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:PLASMA">🔮 Plasma</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:SPARKLE">✨ Sparkle</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:BOUNCE">🏀 Bounce</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:CHASE">🏃 Chase</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:COMET">☄️ Cometa</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:GRADIENT">🎨 Gradient</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:BREATHE">💨 Respirar</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:AURORA">🌌 Aurora</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:WAVE">🌊 Onda</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:ANIM:FISH">🐠 Peixe</button>
-                  <button class="btn btn-soft" data-cmd="NEO:2:CLEAR">❌ Apagar</button>
-                </div>
+        <!-- ============ CONTROL PANELS (Glassmorphic) ============ -->
+
+        <!-- Segments Panel -->
+        <div class="card glass-card segments-card">
+          <div class="card-header">
+            <h3>🎯 Segmentos</h3>
+            <button id="add-segment-btn" class="btn btn-xs btn-primary">+ Novo</button>
+          </div>
+          <div class="card-body">
+            <div id="segments-list" class="segments-list">
+              <div class="empty-hint">Nenhum segmento criado.</div>
+            </div>
+            <div id="segment-form" class="glass-form hidden">
+              <div class="form-row">
+                <input type="number" id="seg-start" class="form-input" placeholder="Início" min="0">
+                <input type="number" id="seg-end" class="form-input" placeholder="Fim" min="0">
+              </div>
+              <select id="seg-anim" class="form-select">
+                <option value="RAINBOW">🌈 Rainbow</option>
+                <option value="FIRE">🔥 Fire</option>
+                <option value="CHASE">🏃 Chase</option>
+                <option value="PALETTE">🎭 Palette</option>
+                <option value="SPARKLE">✨ Sparkle</option>
+              </select>
+              <div class="form-actions">
+                <button id="seg-cancel" class="btn btn-xs">Cancelar</button>
+                <button id="seg-create" class="btn btn-xs btn-primary">Criar</button>
               </div>
             </div>
+          </div>
+        </div>
 
-            <!-- Dimmer Control Card -->
-            <div class="card glass-card dimmer-card">
-              <div class="card-header">
-                <h3>💡 Dimmer</h3>
-              </div>
-              <div class="card-body">
-                <div class="dimmer-slider-row">
-                  <input type="range" id="brightness-slider" class="brightness-slider" min="0" max="100" value="100">
-                  <span id="brightness-value" class="brightness-value">100%</span>
-                </div>
-                <div class="fade-duration-row">
-                  <label>Fade:</label>
-                  <select id="fade-duration" class="form-select-sm">
-                    <option value="0">Instant</option>
-                    <option value="500">0.5s</option>
-                    <option value="1000" selected>1s</option>
-                    <option value="2000">2s</option>
-                    <option value="5000">5s</option>
-                  </select>
-                </div>
-                <div class="quick-brightness-btns">
-                  <button class="btn btn-xs btn-soft" data-brightness="25">25%</button>
-                  <button class="btn btn-xs btn-soft" data-brightness="50">50%</button>
-                  <button class="btn btn-xs btn-soft" data-brightness="75">75%</button>
-                  <button class="btn btn-xs btn-soft" data-brightness="100">100%</button>
-                </div>
-              </div>
+        <!-- Palette Selector -->
+        <div class="card glass-card palette-card">
+          <div class="card-header">
+            <h3>🎨 Paletas</h3>
+            <span id="current-palette" class="badge">RAINBOW</span>
+          </div>
+          <div class="card-body">
+            <div class="palette-grid" id="palette-grid">
+              <button class="palette-btn active" data-palette="RAINBOW"><span
+                  class="palette-preview rainbow"></span></button>
+              <button class="palette-btn" data-palette="OCEAN"><span class="palette-preview ocean"></span></button>
+              <button class="palette-btn" data-palette="LAVA"><span class="palette-preview lava"></span></button>
+              <button class="palette-btn" data-palette="FOREST"><span class="palette-preview forest"></span></button>
+              <button class="palette-btn" data-palette="PARTY"><span class="palette-preview party"></span></button>
+              <button class="palette-btn" data-palette="SUNSET"><span class="palette-preview sunset"></span></button>
+              <button class="palette-btn" data-palette="ICE"><span class="palette-preview ice"></span></button>
+              <button class="palette-btn" data-palette="NEON"><span class="palette-preview neon"></span></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Presets Panel -->
+        <div class="card glass-card presets-card">
+          <div class="card-header">
+            <h3>💾 Presets</h3>
+            <button id="save-preset-btn" class="btn btn-xs btn-primary">Salvar</button>
+          </div>
+          <div class="card-body">
+            <div id="presets-list" class="presets-list">
+              <div class="empty-hint">Nenhum preset salvo.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matrix Tools Panel (Bitmaps) -->
+        <div class="card glass-card matrix-tools-card">
+          <div class="card-header">
+            <h3>🖼️ Matrix Tools</h3>
+            <div class="toggle-group">
+              <button class="toggle-btn active" data-target="gallery">Galeria</button>
+              <button class="toggle-btn" data-target="upload">Upload</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Gallery View -->
+            <div id="matrix-gallery" class="matrix-gallery-grid">
+              <button class="icon-btn" data-icon="HEART">❤️</button>
+              <button class="icon-btn" data-icon="SMILE">😊</button>
+              <button class="icon-btn" data-icon="SAD">☹️</button>
+              <button class="icon-btn" data-icon="ARROW_UP">⬆️</button>
+              <button class="icon-btn" data-icon="ARROW_DOWN">⬇️</button>
+              <button class="icon-btn" data-icon="CHECK">✅</button>
+              <button class="icon-btn" data-icon="CROSS">❌</button>
+              <button class="icon-btn" data-icon="GHOST">👻</button>
             </div>
 
-            <!-- LED Preview Panel -->
-            <div class="card glass-card led-preview-card">
-              <div class="card-header">
-                <h3>💡 LED Preview</h3>
+            <!-- Upload View -->
+            <div id="matrix-upload" class="matrix-upload-section hidden">
+              <div class="upload-area" id="bmp-drop-zone">
+                <span class="upload-icon">📁</span>
+                <span class="upload-text">Drag & Drop ou Clique</span>
+                <input type="file" id="bmp-file-input" accept="image/png, image/jpeg" hidden>
+              </div>
+
+              <div class="preview-area hidden" id="bmp-preview-container">
+                <canvas id="bmp-canvas" width="8" height="8"
+                  style="image-rendering: pixelated; width: 64px; height: 64px; border: 1px solid #333;"></canvas>
                 <div class="preview-controls">
-                  <select id="preview-layout" class="form-select-sm">
-                    <option value="matrix">Matrix</option>
-                    <option value="strip">Strip</option>
-                    <option value="ring">Ring</option>
-                  </select>
-                  <label class="toggle-switch-sm">
-                    <input type="checkbox" id="preview-glow" checked>
-                    <span class="toggle-slider-sm"></span>
-                    <span>Glow</span>
-                  </label>
-                </div>
-              </div>
-              <div class="card-body led-preview-body">
-                <canvas id="led-preview-canvas" class="led-preview-canvas"></canvas>
-                <div class="preview-size-controls">
-                  <div class="size-input-group">
-                    <label>W:</label>
-                    <input type="number" id="preview-width" class="form-input-xs" value="8" min="1" max="64">
+                  <div class="form-group small">
+                    <label>Largura</label>
+                    <input type="number" id="bmp-width" class="form-input" value="8" min="1" max="64">
                   </div>
-                  <div class="size-input-group">
-                    <label>H:</label>
-                    <input type="number" id="preview-height" class="form-input-xs" value="8" min="1" max="64">
+                  <div class="form-group small">
+                    <label>Altura</label>
+                    <input type="number" id="bmp-height" class="form-input" value="8" min="1" max="64">
                   </div>
-                  <button id="preview-test-rainbow" class="btn btn-xs btn-soft">🌈 Test</button>
-                  <button id="preview-clear" class="btn btn-xs btn-soft">Clear</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- ============ CONTROL PANELS (Glassmorphic) ============ -->
-
-            <!-- Segments Panel -->
-            <div class="card glass-card segments-card">
-              <div class="card-header">
-                <h3>🎯 Segmentos</h3>
-                <button id="add-segment-btn" class="btn btn-xs btn-primary">+ Novo</button>
-              </div>
-              <div class="card-body">
-                <div id="segments-list" class="segments-list">
-                  <div class="empty-hint">Nenhum segmento criado.</div>
-                </div>
-                <div id="segment-form" class="glass-form hidden">
-                  <div class="form-row">
-                    <input type="number" id="seg-start" class="form-input" placeholder="Início" min="0">
-                    <input type="number" id="seg-end" class="form-input" placeholder="Fim" min="0">
-                  </div>
-                  <select id="seg-anim" class="form-select">
-                    <option value="RAINBOW">🌈 Rainbow</option>
-                    <option value="FIRE">🔥 Fire</option>
-                    <option value="CHASE">🏃 Chase</option>
-                    <option value="PALETTE">🎭 Palette</option>
-                    <option value="SPARKLE">✨ Sparkle</option>
-                  </select>
-                  <div class="form-actions">
-                    <button id="seg-cancel" class="btn btn-xs">Cancelar</button>
-                    <button id="seg-create" class="btn btn-xs btn-primary">Criar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Palette Selector -->
-            <div class="card glass-card palette-card">
-              <div class="card-header">
-                <h3>🎨 Paletas</h3>
-                <span id="current-palette" class="badge">RAINBOW</span>
-              </div>
-              <div class="card-body">
-                <div class="palette-grid" id="palette-grid">
-                  <button class="palette-btn active" data-palette="RAINBOW"><span
-                      class="palette-preview rainbow"></span></button>
-                  <button class="palette-btn" data-palette="OCEAN"><span class="palette-preview ocean"></span></button>
-                  <button class="palette-btn" data-palette="LAVA"><span class="palette-preview lava"></span></button>
-                  <button class="palette-btn" data-palette="FOREST"><span
-                      class="palette-preview forest"></span></button>
-                  <button class="palette-btn" data-palette="PARTY"><span class="palette-preview party"></span></button>
-                  <button class="palette-btn" data-palette="SUNSET"><span
-                      class="palette-preview sunset"></span></button>
-                  <button class="palette-btn" data-palette="ICE"><span class="palette-preview ice"></span></button>
-                  <button class="palette-btn" data-palette="NEON"><span class="palette-preview neon"></span></button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Presets Panel -->
-            <div class="card glass-card presets-card">
-              <div class="card-header">
-                <h3>💾 Presets</h3>
-                <button id="save-preset-btn" class="btn btn-xs btn-primary">Salvar</button>
-              </div>
-              <div class="card-body">
-                <div id="presets-list" class="presets-list">
-                  <div class="empty-hint">Nenhum preset salvo.</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Matrix Tools Panel (Bitmaps) -->
-            <div class="card glass-card matrix-tools-card">
-              <div class="card-header">
-                <h3>🖼️ Matrix Tools</h3>
-                <div class="toggle-group">
-                  <button class="toggle-btn active" data-target="gallery">Galeria</button>
-                  <button class="toggle-btn" data-target="upload">Upload</button>
-                </div>
-              </div>
-              <div class="card-body">
-                <!-- Gallery View -->
-                <div id="matrix-gallery" class="matrix-gallery-grid">
-                  <button class="icon-btn" data-icon="HEART">❤️</button>
-                  <button class="icon-btn" data-icon="SMILE">😊</button>
-                  <button class="icon-btn" data-icon="SAD">☹️</button>
-                  <button class="icon-btn" data-icon="ARROW_UP">⬆️</button>
-                  <button class="icon-btn" data-icon="ARROW_DOWN">⬇️</button>
-                  <button class="icon-btn" data-icon="CHECK">✅</button>
-                  <button class="icon-btn" data-icon="CROSS">❌</button>
-                  <button class="icon-btn" data-icon="GHOST">👻</button>
-                </div>
-
-                <!-- Upload View -->
-                <div id="matrix-upload" class="matrix-upload-section hidden">
-                  <div class="upload-area" id="bmp-drop-zone">
-                    <span class="upload-icon">📁</span>
-                    <span class="upload-text">Drag & Drop ou Clique</span>
-                    <input type="file" id="bmp-file-input" accept="image/png, image/jpeg" hidden>
-                  </div>
-
-                  <div class="preview-area hidden" id="bmp-preview-container">
-                    <canvas id="bmp-canvas" width="8" height="8"
-                      style="image-rendering: pixelated; width: 64px; height: 64px; border: 1px solid #333;"></canvas>
-                    <div class="preview-controls">
-                      <div class="form-group small">
-                        <label>Largura</label>
-                        <input type="number" id="bmp-width" class="form-input" value="8" min="1" max="64">
-                      </div>
-                      <div class="form-group small">
-                        <label>Altura</label>
-                        <input type="number" id="bmp-height" class="form-input" value="8" min="1" max="64">
-                      </div>
-                      <button id="btn-send-bmp" class="btn btn-primary btn-sm">Enviar</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Console/Log -->
-            <div class="card console-card">
-              <div class="card-header flex-header">
-                <h3>Terminal Serial</h3>
-                <div class="console-actions">
-                  <button id="clear-log" class="btn btn-xs">Limpar</button>
-                  <button id="export-log" class="btn btn-xs">Exportar</button>
-                </div>
-              </div>
-              <div class="console-body">
-                <div id="log-container" class="log-output">
-                  <div class="log-entry system">Pronto. Aguardando conexão...</div>
-                </div>
-                <div class="console-input-wrapper">
-                  <span class="console-prompt">></span>
-                  <input type="text" id="command-input" class="console-input" placeholder="Digite um comando..."
-                    disabled>
-                  <button id="send-btn" class="btn-send" disabled>→</button>
+                  <button id="btn-send-bmp" class="btn btn-primary btn-sm">Enviar</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- SUB-VIEW: SPECS -->
-        <div id="tab-specs" class="tab-content">
-          <div class="specs-wrapper">
-            <!-- Specs content remains similar -->
-            <div class="spec-block">
-              <h4>Identidade</h4>
-              <div class="spec-grid">
-                <div class="spec-item"><span class="label">Modelo</span><span class="value" id="spec-model">-</span>
-                </div>
-                <div class="spec-item"><span class="label">Porta</span><span class="value" id="spec-port">-</span>
-                </div>
-                <div class="spec-item"><span class="label">Fabricante</span><span class="value" id="spec-mfr">-</span>
-                </div>
-              </div>
+        <!-- Console/Log -->
+        <div class="card console-card">
+          <div class="card-header flex-header">
+            <h3>Terminal Serial</h3>
+            <div class="console-actions">
+              <button id="clear-log" class="btn btn-xs">Limpar</button>
+              <button id="export-log" class="btn btn-xs">Exportar</button>
             </div>
-            <!-- Hardware -->
-            <div class="spec-block">
-              <h4>Hardware</h4>
-              <div class="spec-grid">
-                <div class="spec-item"><span class="label">CPU</span><span class="value" id="spec-cpu">-</span></div>
-                <div class="spec-item"><span class="label">Clock</span><span class="value" id="spec-clock">-</span>
-                </div>
-                <div class="spec-item"><span class="label">Tensão</span><span class="value" id="spec-voltage">-</span>
-                </div>
-                <div class="spec-item"><span class="label">Arq</span><span class="value" id="spec-arch">-</span></div>
-              </div>
+          </div>
+          <div class="console-body">
+            <div id="log-container" class="log-output">
+              <div class="log-entry system">Pronto. Aguardando conexão...</div>
             </div>
-            <!-- Resources -->
-            <div class="spec-block">
-              <h4>Recursos</h4>
-              <div class="spec-grid three-col">
-                <div class="spec-item box"><span class="label">Flash</span><span class="value large"
-                    id="spec-flash">-</span></div>
-                <div class="spec-item box"><span class="label">RAM</span><span class="value large"
-                    id="spec-ram">-</span></div>
-                <div class="spec-item box"><span class="label">EEPROM</span><span class="value large"
-                    id="spec-eeprom">-</span></div>
-              </div>
-            </div>
-            <!-- IO -->
-            <div class="spec-block">
-              <h4>Entrada / Saída</h4>
-              <div class="spec-grid">
-                <div class="spec-item"><span class="label">GPIO</span><span class="value" id="spec-gpio">-</span>
-                </div>
-                <div class="spec-item"><span class="label">ADC</span><span class="value" id="spec-adc">-</span></div>
-                <div class="spec-item"><span class="label">PWM</span><span class="value" id="spec-pwm">-</span></div>
-                <div class="spec-item"><span class="label">DAC</span><span class="value" id="spec-dac">-</span></div>
-              </div>
+            <div class="console-input-wrapper">
+              <span class="console-prompt">></span>
+              <input type="text" id="command-input" class="console-input" placeholder="Digite um comando..." disabled>
+              <button id="send-btn" class="btn-send" disabled>→</button>
             </div>
           </div>
         </div>
+      </div>
+    </div>
 
-        <!-- SUB-VIEW: FIRMWARE -->
-        <div id="tab-firmware" class="tab-content">
-          <div class="firmware-layout">
-            <div class="card tools-card">
-              <div class="tools-header">
-                <h3>Ferramentas Disponíveis</h3>
-                <div id="tools-status" class="status-pills">
-                  <span class="pill" id="tool-arduino">Arduino CLI</span>
-                  <span class="pill" id="tool-ampy">ampy</span>
-                </div>
-                <button id="btn-browse-templates" class="btn btn-xs btn-secondary" style="margin-left: auto;">📋
-                  Templates</button>
-                <button id="btn-web-install" class="btn btn-xs btn-primary">Web
-                  Installer</button>
-              </div>
+    <!-- SUB-VIEW: SPECS -->
+    <div id="tab-specs" class="tab-content">
+      <div class="specs-wrapper">
+        <!-- Specs content remains similar -->
+        <div class="spec-block">
+          <h4>Identidade</h4>
+          <div class="spec-grid">
+            <div class="spec-item"><span class="label">Modelo</span><span class="value" id="spec-model">-</span>
             </div>
-
-            <div class="card editor-card">
-              <div class="card-header flex-header">
-                <div class="selector-group">
-                  <select id="template-select" class="select-input">
-                    <option value="">Carregar Template...</option>
-                  </select>
-                  <button id="load-template-btn" class="btn btn-secondary">Carregar</button>
-                  <div class="divider-vertical"></div>
-                  <select id="fw-platform" class="select-input" style="width: 140px;">
-                    <option value="arduino">Arduino (C++)</option>
-                    <option value="micropython">ESP32 (uPy)</option>
-                  </select>
-                  <button id="btn-generate-fw" class="btn btn-soft" onclick="alert('INLINE CLICK WORKS')">✨ Gerar
-                    Automático</button>
-                </div>
-                <button id="upload-firmware-btn" class="btn btn-primary" disabled>Upload Firmware</button>
-              </div>
-
-              <div class="editor-subbar">
-                <span id="current-file" class="filename">Nenhum arquivo</span>
-                <select id="file-select" class="file-select hidden"></select>
-                <span id="firmware-status" class="status-text"></span>
-              </div>
-
-              <textarea id="code-editor" class="code-area" spellcheck="false"
-                placeholder="// Selecione um template..."></textarea>
+            <div class="spec-item"><span class="label">Porta</span><span class="value" id="spec-port">-</span>
+            </div>
+            <div class="spec-item"><span class="label">Fabricante</span><span class="value" id="spec-mfr">-</span>
             </div>
           </div>
         </div>
+        <!-- Hardware -->
+        <div class="spec-block">
+          <h4>Hardware</h4>
+          <div class="spec-grid">
+            <div class="spec-item"><span class="label">CPU</span><span class="value" id="spec-cpu">-</span></div>
+            <div class="spec-item"><span class="label">Clock</span><span class="value" id="spec-clock">-</span>
+            </div>
+            <div class="spec-item"><span class="label">Tensão</span><span class="value" id="spec-voltage">-</span>
+            </div>
+            <div class="spec-item"><span class="label">Arq</span><span class="value" id="spec-arch">-</span></div>
+          </div>
+        </div>
+        <!-- Resources -->
+        <div class="spec-block">
+          <h4>Recursos</h4>
+          <div class="spec-grid three-col">
+            <div class="spec-item box"><span class="label">Flash</span><span class="value large"
+                id="spec-flash">-</span></div>
+            <div class="spec-item box"><span class="label">RAM</span><span class="value large" id="spec-ram">-</span>
+            </div>
+            <div class="spec-item box"><span class="label">EEPROM</span><span class="value large"
+                id="spec-eeprom">-</span></div>
+          </div>
+        </div>
+        <!-- IO -->
+        <div class="spec-block">
+          <h4>Entrada / Saída</h4>
+          <div class="spec-grid">
+            <div class="spec-item"><span class="label">GPIO</span><span class="value" id="spec-gpio">-</span>
+            </div>
+            <div class="spec-item"><span class="label">ADC</span><span class="value" id="spec-adc">-</span></div>
+            <div class="spec-item"><span class="label">PWM</span><span class="value" id="spec-pwm">-</span></div>
+            <div class="spec-item"><span class="label">DAC</span><span class="value" id="spec-dac">-</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-      </div> <!-- End board-content-wrapper -->
+    <!-- SUB-VIEW: FIRMWARE -->
+    <div id="tab-firmware" class="tab-content">
+      <div class="firmware-layout">
+        <div class="card tools-card">
+          <div class="tools-header">
+            <h3>Ferramentas Disponíveis</h3>
+            <div id="tools-status" class="status-pills">
+              <span class="pill" id="tool-arduino">Arduino CLI</span>
+              <span class="pill" id="tool-ampy">ampy</span>
+            </div>
+            <button id="btn-browse-templates" class="btn btn-xs btn-secondary" style="margin-left: auto;">📋
+              Templates</button>
+            <button id="btn-web-install" class="btn btn-xs btn-primary">Web
+              Installer</button>
+          </div>
+        </div>
+
+        <div class="card editor-card">
+          <div class="card-header flex-header">
+            <div class="selector-group">
+              <select id="template-select" class="select-input">
+                <option value="">Carregar Template...</option>
+              </select>
+              <button id="load-template-btn" class="btn btn-secondary">Carregar</button>
+              <div class="divider-vertical"></div>
+              <select id="fw-platform" class="select-input" style="width: 140px;">
+                <option value="arduino">Arduino (C++)</option>
+                <option value="micropython">ESP32 (uPy)</option>
+              </select>
+              <button id="btn-generate-fw" class="btn btn-soft" onclick="alert('INLINE CLICK WORKS')">✨ Gerar
+                Automático</button>
+            </div>
+            <button id="upload-firmware-btn" class="btn btn-primary" disabled>Upload Firmware</button>
+          </div>
+
+          <div class="editor-subbar">
+            <span id="current-file" class="filename">Nenhum arquivo</span>
+            <select id="file-select" class="file-select hidden"></select>
+            <span id="firmware-status" class="status-text"></span>
+          </div>
+
+          <textarea id="code-editor" class="code-area" spellcheck="false"
+            placeholder="// Selecione um template..."></textarea>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- End board-content-wrapper -->
   </div>
 
   <!-- VIEW: MODULES -->
@@ -1379,6 +1461,7 @@
           <button class="btn btn-xs btn-secondary" id="btn-add-led">+ LED</button>
           <button class="btn btn-xs btn-primary" id="btn-add-neopixel">+ NeoPixel</button>
           <button class="btn btn-xs btn-secondary" id="btn-add-tide">🌊 Marés</button>
+          <button class="btn btn-xs btn-secondary" id="btn-add-servo">🦾 Servo</button>
         </div>
         <div class="card-body">
           <div id="modules-output-list" class="modules-list">
@@ -1406,10 +1489,14 @@
       <div class="card module-category">
         <div class="card-header flex-header">
           <h3>Entradas (Inputs)</h3>
+          <button class="btn btn-xs btn-secondary" id="btn-add-touch">👆 Touch</button>
           <button class="btn btn-xs btn-secondary" disabled>+ Add Sensor</button>
         </div>
         <div class="card-body">
-          <p class="placeholder-text">Em breve...</p>
+          <div id="modules-input-list" class="modules-list">
+            <!-- Input modules added here -->
+            <div class="empty-module-state">Nenhum sensor configurado.</div>
+          </div>
         </div>
       </div>
 
@@ -1433,6 +1520,63 @@
       <div class="modal-footer">
         <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
         <button id="modal-confirm" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOUCH CONFIGURATION MODAL -->
+  <div id="touch-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal glass-card">
+      <div class="modal-header">
+        <h3>👆 Configurar Touch</h3>
+        <button id="touch-modal-close" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Nome do Sensor</label>
+          <input type="text" id="touch-name" class="form-input" placeholder="Ex: Touch Menu">
+        </div>
+        <div class="form-group">
+          <label>Pino (GPIO)</label>
+          <input type="number" id="touch-pin" class="form-input" value="4">
+          <small class="hint">Use pinos capacitivos para modo Nativo (Ex: GPIO 2, 4, 12-15, 27, 32-33)</small>
+        </div>
+
+        <div class="form-group">
+          <label>Modo de Operação</label>
+          <select id="touch-mode" class="form-select">
+            <option value="NATIVE" selected>Nativo (Capacitivo ESP32)</option>
+            <option value="DIGITAL">Digital (Sensor Externo TTP223)</option>
+          </select>
+        </div>
+
+        <!-- Calibration Section (Only relevant for Native) -->
+        <div id="touch-calibration-group" class="config-section">
+          <h4 class="section-title">Calibração (Modo Nativo)</h4>
+          <div class="calibration-box">
+            <div class="cal-display">
+              <span class="cal-label">Valor Atual:</span>
+              <span id="touch-raw-val" class="cal-value">--</span>
+            </div>
+            <div class="cal-controls">
+              <button id="btn-touch-cal-start" class="btn btn-xs btn-soft">▶ Iniciar Leitura</button>
+              <button id="btn-touch-cal-stop" class="btn btn-xs btn-soft hidden">⏹ Parar</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Threshold (Sensibilidade)</label>
+            <div class="slider-row">
+              <input type="range" id="touch-threshold" class="slider" min="0" max="100" value="40">
+              <span id="touch-threshold-val">40</span>
+            </div>
+            <small class="hint">Abaixo deste valor = Toque detectado (Menor = Menos Sensível)</small>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button id="touch-modal-cancel" class="btn btn-secondary">Cancelar</button>
+        <button id="touch-modal-confirm" class="btn btn-primary">Salvar</button>
       </div>
     </div>
   </div>
@@ -2151,10 +2295,106 @@
     </div>
   </div>
 
+  <!-- SERVO CONFIGURATION MODAL -->
+  <div id="servo-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal modal-lg glass-card">
+      <div class="modal-header">
+        <h3 id="servo-modal-title">🦾 Configurar Servo</h3>
+        <button id="servo-modal-close" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Basic Hardware -->
+        <section class="config-section">
+          <h4 class="section-title">🔌 Hardware</h4>
+          <div class="form-grid cols-3">
+            <div class="form-group">
+              <label for="servo-name">Nome</label>
+              <input type="text" id="servo-name" class="form-input" placeholder="ex: GaugeMaré">
+            </div>
+            <div class="form-group">
+              <label for="servo-pin">Pino PWM</label>
+              <input type="number" id="servo-pin" class="form-input" value="13" min="0" max="39">
+            </div>
+            <div class="form-group">
+              <label for="servo-type">Tipo</label>
+              <select id="servo-type" class="form-select">
+                <option value="180" selected>180° (Padrão)</option>
+                <option value="360">360° (Contínuo)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid cols-2">
+            <div class="form-group">
+              <label for="servo-min-pulse">Pulso Min (µs)</label>
+              <input type="number" id="servo-min-pulse" class="form-input" value="500">
+              <small class="hint">0° (Padrão: 500-1000)</small>
+            </div>
+            <div class="form-group">
+              <label for="servo-max-pulse">Pulso Max (µs)</label>
+              <input type="number" id="servo-max-pulse" class="form-input" value="2500">
+              <small class="hint">180° (Padrão: 2000-2500)</small>
+            </div>
+          </div>
+        </section>
+
+        <!-- Automation / Source -->
+        <section class="config-section">
+          <h4 class="section-title">🤖 Automação (Mostrador)</h4>
+          <div class="form-group">
+            <label for="servo-source">Fonte de Dados (Controlador)</label>
+            <select id="servo-source" class="form-select">
+              <option value="NONE" selected>Manual (Sem automação)</option>
+              <option value="TIDE_LEVEL">🌊 Nível da Maré (0-100%)</option>
+              <option value="TIDE_TREND">📈 Tendência da Maré (-1 a +1)</option>
+              <option value="WIFI_SIGNAL">📶 Sinal WiFi (RSSI)</option>
+            </select>
+          </div>
+
+          <!-- Mapping Logic -->
+          <div id="servo-mapping-container" class="hidden">
+            <hr style="border-color: rgba(255,255,255,0.1); margin: 15px 0;">
+            <h5 style="color:var(--text-secondary); margin-bottom:10px;">Mapeamento de Valores</h5>
+            <div class="form-grid cols-2">
+              <div class="form-group">
+                <label>Entrada Mínima (Input)</label>
+                <input type="number" id="servo-map-in-min" class="form-input" value="0">
+                <small id="servo-hint-in-min" class="hint">ex: 0% Maré</small>
+              </div>
+              <div class="form-group">
+                <label>Ângulo Inicial (Output)</label>
+                <input type="number" id="servo-map-out-min" class="form-input" value="0">
+                <small class="hint">Posição do Servo (0-180)</small>
+              </div>
+            </div>
+            <div class="form-grid cols-2">
+              <div class="form-group">
+                <label>Entrada Máxima (Input)</label>
+                <input type="number" id="servo-map-in-max" class="form-input" value="100">
+                <small id="servo-hint-in-max" class="hint">ex: 100% Maré</small>
+              </div>
+              <div class="form-group">
+                <label>Ângulo Final (Output)</label>
+                <input type="number" id="servo-map-out-max" class="form-input" value="180">
+                <small class="hint">Posição do Servo (0-180)</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <div class="modal-footer">
+        <button id="servo-modal-cancel" class="btn btn-secondary">Cancelar</button>
+        <button id="servo-modal-confirm" class="btn btn-glow">Adicionar Servo</button>
+      </div>
+    </div>
+  </div>
+
   <script src="lib/esptool.bundle.js"></script>
   <script src="../../dist/renderer/installer.js?v=TIMESTAMP_HERE"></script>
   <script src="../../dist/renderer/bitmaps.js"></script>
   <script src="../../dist/renderer/led-preview.js"></script>
+  <script src="../../dist/renderer/tide-visuals.js"></script>
   <script src="../../dist/renderer/renderer.js"></script>
 </body>
 

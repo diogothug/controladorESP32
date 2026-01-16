@@ -149,6 +149,7 @@ export interface NeoPixelConfig {
     transitionSpeed?: 'SLOW' | 'MEDIUM' | 'FAST' | 'INSTANT'; // Transition speed
     customAnimation?: CustomAnimationData; // Custom animation frames (for CUSTOM type)
     autoBrightness?: boolean;     // Adjust brightness automatically via LDR sensor
+    timeBasedBrightness?: boolean; // Adjust based on time of day (No sensor required)
 }
 
 export interface SensorConfig {
@@ -349,11 +350,35 @@ export interface AudioConfig {
     mode: 'SPECTRUM' | 'VU_METER' | 'BEAT_PULSE' | 'ENERGY';
 }
 
+// === SERVO (Phase 15) ===
+export interface ServoConfig {
+    pin: number;
+    type: '180' | '360';
+    minPulse: number;       // default 500us
+    maxPulse: number;       // default 2500us
+    startAngle: number;     // for initialization (0-180)
+
+    // Auto Control (Gauge Mode)
+    autoControl: 'NONE' | 'TIDE_LEVEL' | 'TIDE_TREND' | 'WIFI_SIGNAL';
+    minInput: number;       // e.g. 0 (Tide 0%)
+    maxInput: number;       // e.g. 100 (Tide 100%)
+    minOutputAngle: number; // e.g. 0
+    maxOutputAngle: number; // e.g. 180 (for 180 type)
+}
+
+// === TOUCH SENSOR (Native/Digital) ===
+export interface TouchSensorConfig {
+    pin: number;
+    mode: 'DIGITAL' | 'NATIVE';
+    threshold: number;      // Sensitivity (0-100, default 40)
+    // Future: Actions mapping?
+}
+
 export type ModuleType =
     'LED' | 'NEOPIXEL' | 'TEMP_SENSOR' | 'RELAY' | 'BUTTON' | 'PWM' |
     'ADC' | 'WIFI' | 'CLOCK' | 'TIDE' | 'ENCODER' | 'PIR' | 'LDR' |
     'WEB_SERVER' | 'MQTT' | 'OTA' | 'UDP' |
-    'ESPNOW' | 'BLE' | 'DISPLAY' | 'NVS' | 'AUTOMATION' | 'MODE' | 'TELEMETRY' | 'AUDIO';
+    'ESPNOW' | 'BLE' | 'DISPLAY' | 'NVS' | 'AUTOMATION' | 'MODE' | 'TELEMETRY' | 'AUDIO' | 'SERVO' | 'TOUCH';
 
 export interface ModuleConfig {
     id: string;
@@ -379,6 +404,8 @@ export interface ModuleConfig {
     modeConfig?: DeviceModeConfig;
     telemetryConfig?: TelemetryConfig;
     audioConfig?: AudioConfig;
+    servoConfig?: ServoConfig;
+    touchConfig?: TouchSensorConfig;
     // Generic options for input modules (BUTTON, ENCODER, PIR, LDR)
     options?: {
         // BUTTON options

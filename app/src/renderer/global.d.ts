@@ -165,8 +165,35 @@ interface ProjectsAPI {
     delete: (id: string) => Promise<boolean>;
 }
 
+
+// Tide Visuals Logic Interface (defined in tide-visuals.ts)
+interface TideLogicConfig {
+    brightnessMax: number;
+    smoothTau: number;
+    trendDeadband: number;
+    glowFeather: number;
+    baseColor: { r: number, g: number, b: number };
+    riseColor: { r: number, g: number, b: number };
+    fallColor: { r: number, g: number, b: number };
+}
+
+interface TideLogicInput {
+    level: number;
+    trend: number;
+    confidence: number;
+    hasWifi: boolean;
+}
+
+// Class type definition
+declare class TideVisuals {
+    constructor(config?: Partial<TideLogicConfig>);
+    update(dt: number, input: TideLogicInput): void;
+    render(count: number, width: number, height: number): { r: number, g: number, b: number }[];
+}
+
 interface Window {
     serial: SerialAPI;
     firmware: FirmwareAPI;
     projects: ProjectsAPI;
+    TideVisuals: typeof TideVisuals; // Constructor
 }

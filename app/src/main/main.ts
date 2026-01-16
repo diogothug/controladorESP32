@@ -1,6 +1,15 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 import { registerIpcHandlers } from './ipc-handlers';
+import { TelemetryService } from './telemetry-service';
+
+// Global Error Handlers (Telemetry)
+process.on('uncaughtException', (error) => {
+    TelemetryService.getInstance().trackError(error, 'MainProcess_Uncaught');
+});
+process.on('unhandledRejection', (reason) => {
+    TelemetryService.getInstance().trackError(String(reason), 'MainProcess_UnhandledRejection');
+});
 
 // Enable hot reload in development
 if (!app.isPackaged) {

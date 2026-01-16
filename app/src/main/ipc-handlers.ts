@@ -4,6 +4,7 @@ import { firmwareManager, ToolStatus, CompileResult, UploadResult, FirmwareTempl
 import { projectManager } from './project-manager';
 import { templateManager } from './template-manager';
 import { ProjectData, DeviceTemplate } from '../shared/types';
+import { TelemetryService } from './telemetry-service';
 
 /**
  * Registra handlers IPC para comunicação com o renderer
@@ -380,6 +381,16 @@ export function registerIpcHandlers(mainWindow: any): void {
     });
 
     serialManager.on('data', (data: string) => {
+        // Telemetry Intercept
+        if (data.startsWith('FEEDBACK:')) {
+            const parts = data.split(':');
+            if (parts.length >= 3) {
+                const name = parts[1];
+                const msg = parts.slice(2).join(':'); // Rejoin rest of message
+                TelemetryService.getInstance().trackFeedback(name, msg);
+            }
+        }
+
         mainWindow.webContents.send('serial:data', data);
     });
 

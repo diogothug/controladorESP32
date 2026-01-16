@@ -44,6 +44,7 @@ const MODULE_SNIPPETS: Record<string, (config: ModuleConfig, intent: FirmwareInt
     'AUTOMATION': generateAutomationSnippet,
     'MODE': generateModeSnippet,
     'TELEMETRY': generateTelemetrySnippet,
+    'SERVO': generateServoSnippet,
 };
 
 // ============ ESP32 MicroPython Generator ============
@@ -3988,3 +3989,108 @@ export const modularFirmwareGenerator = {
     generateMicroPython: generateModularMicroPython,
     getRecoveryFirmware,
 };
+// ============ SERVO (Phase 15) ============
+
+function generateServoSnippet(config: ModuleConfig, intent: FirmwareIntent): ModuleSnippet {
+    const name = config.name.replace(/\s+/g, '_');
+    const pin = config.pin;
+    const inverted = config.inverted || false;
+    const cfg = config.servoConfig || {
+        pin: 13, type: '180', minPulse: 500, maxPulse: 2500, startAngle: 0,
+        autoControl: 'NONE', minInput: 0, maxInput: 100, minOutputAngle: 0, maxOutputAngle: 180
+    };
+
+    // PWM Frequency for servos is typically 50Hz
+    const frequency = 50;
+    const maxDuty = 65535; // 16-bit resolution
+
+    // Calculate Duty Cycles for Min/Max pulse
+    // Period = 1/50 = 20ms = 20000us
+    // Duty = (Pulse / 20000) * 65535
+
+    return {
+        imports: '',
+        globals: `
+ # Servo: ${name}
+ servo_${name} = machine.PWM(machine.Pin(${pin}), freq=${frequency})
+ servo_${name}_type = "${cfg.type}"  # 180 or 360
+ servo_${name}_min_pulse = ${cfg.minPulse}
+ servo_${name}_max_pulse = ${cfg.maxPulse}
+ servo_${name}_angle = ${cfg.startAngle}
+ 
+ # Auto Control
+ servo_${name}_auto_source = "${cfg.autoControl}" # NONE, TIDE_LEVEL, TIDE_TREND, WIFI_SIGNAL
+ servo_${name}_in_min = ${cfg.minInput}
+ servo_${name}_in_max = ${cfg.maxInput}
+ servo_${name}_out_min = ${cfg.minOutputAngle}
+ servo_${name}_out_max = ${cfg.maxOutputAngle}
+ 
+ def set_servo_${name}_angle(angle):
+     # Clamp angle
+     if angle < 0: angle = 0
+     if angle > 180 and servo_${name}_type == "180": angle = 180
+     
+     # Map angle (0-180) to Pulse Width (minPulse - maxPulse)
+     # For 360 servos, angle usually means speed (0=full CW, 90=stop, 180=full CCW)
+     
+     span_pulse = servo_${name}_max_pulse - servo_${name}_min_pulse
+     pulse_us = servo_${name}_min_pulse + (angle / 180.0 * span_pulse)
+     
+     # Calculate Duty (0-65535)
+     # 50Hz = 20000us period
+     duty = int((pulse_us / 20000.0) * 65535)
+     
+     servo_${name}.duty_u16(duty)
+     global servo_${name}_angle
+     servo_${name}_angle = angle
+     # print(f"SERVO:{name}:ANGLE:{angle}:DUTY:{duty}")
+ `,
+        init: `
+ # Init Servo ${name}
+ set_servo_${name}_angle(${cfg.startAngle})
+ `,
+        loop: `
+     # Servo Auto Control Logic
+     if servo_${name}_auto_source != "NONE":
+         input_val = 0
+         if servo_${name}_auto_source == "TIDE_LEVEL" and "tide" in globals():
+             # Assumes tide dictionary exists: tide['level'] (0-100)
+             # Fallback if tide module not ready
+             if 'tide_data' in globals() and 'level' in tide_data:
+                 input_val = tide_data['level']
+         elif servo_${name}_auto_source == "TIDE_TREND" and "tide_data" in globals():
+             if 'trend' in tide_data: input_val = tide_data['trend'] # -1 to 1
+         elif servo_${name}_auto_source == "WIFI_SIGNAL" and "wlan" in globals():
+             if wlan.isconnected(): input_val = wlan.status('rssi') # e.g. -60
+ 
+         # Map Input to Angle
+         # Output = OutMin + ( (Input - InMin) / (InMax - InMin) * (OutMax - OutMin) )
+         
+         in_span = servo_${name}_in_max - servo_${name}_in_min
+         if in_span != 0:
+             pct = (input_val - servo_${name}_in_min) / in_span
+             # Clamp Pct to 0-1? Maybe not, allow overshoot if limits allow? 
+             # Let's clamp to mapped range
+             if pct < 0: pct = 0
+             if pct > 1: pct = 1
+             
+             out_span = servo_${name}_out_max - servo_${name}_out_min
+             target_angle = servo_${name}_out_min + (pct * out_span)
+             
+             # Apply with smoothing? Direct for now.
+             set_servo_${name}_angle(target_angle)
+ `,
+        commands: `    if cmd.startswith("SERVO:${name}:SET:"):
+         try:
+             angle = float(cmd.split(":")[-1])
+             set_servo_${name}_angle(angle)
+             print(f"OK:SERVO:${name}:{angle}")
+         except:
+             print("ERR:SERVO:INVALID_ANGLE")
+         return True
+     if cmd == "SERVO:${name}:GET":
+         print(f"OK:SERVO:${name}:{servo_${name}_angle}")
+         return True`,
+        caps: ['SERVO']
+    };
+}

@@ -1,0 +1,98 @@
+/* Console Grid Layout */
+.home-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+/* Make grid responsive */
+@media (max-width: 1000px) {
+    .home-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.terminal-card {
+    grid-column: 1 / -1;
+    /* Full width */
+}
+
+/* Quick Actions */
+.quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 0.8rem;
+}
+
+/* Terminal Layout with Sidebar */
+.terminal-layout {
+    display: flex;
+    gap: 1rem;
+    height: 400px;
+}
+
+.command-ref-sidebar {
+    width: 200px;
+    background: rgba(255, 255, 255, 0.03);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    padding-right: 10px;
+    overflow-y: auto;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.command-ref-sidebar h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.cmd-list details {
+    margin-bottom: 0.5rem;
+}
+
+.cmd-list summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: 4px;
+    user-select: none;
+}
+
+.cmd-list summary:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.cmd-item {
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-left: 10px;
+    color: var(--text-tertiary);
+    font-family: monospace;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.cmd-item:hover {
+    color: var(--accent-primary);
+    background: rgba(0, 170, 255, 0.1);
+}
+
+.terminal-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+}
+
+.log-output {
+    flex: 1;
+    overflow-y: auto;
+    /* Existing styles inherited */
+}

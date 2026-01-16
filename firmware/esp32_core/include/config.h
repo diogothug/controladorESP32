@@ -7,6 +7,7 @@
 // Hardware Config
 #define LED_PIN 4
 #define NUM_LEDS 64
+#define PIN_TOUCH_SENSOR 15 // TTP223 Input
 
 // System Config
 #define SERIAL_BAUD 115200
