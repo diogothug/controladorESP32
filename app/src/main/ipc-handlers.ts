@@ -228,7 +228,22 @@ export function registerIpcHandlers(mainWindow: any): void {
     // Generic HTTP fetch for any URL
     ipcMain.handle('api:fetch', async (_: any, url: string): Promise<{ success: boolean; data?: any; error?: string }> => {
         console.log('[IPC] api:fetch called:', url);
+
+        // Security Whitelist
+        const ALLOWED_DOMAINS = [
+            'api.open-meteo.com',
+            'raw.githubusercontent.com',
+            'github.com',
+            'google.com' // Example, remove if not needed
+        ];
+
         try {
+            const urlObj = new URL(url);
+            if (!ALLOWED_DOMAINS.some(domain => urlObj.hostname.endsWith(domain))) {
+                console.warn('[IPC] Blocked fetch to unauthorized domain:', urlObj.hostname);
+                return { success: false, error: 'Domain not allowed' };
+            }
+
             const https = require('https');
             const http = require('http');
             const protocol = url.startsWith('https') ? https : http;

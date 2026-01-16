@@ -97,12 +97,41 @@ const firmwareAPI = {
 };
 
 // Types for Projects (Duplicated to avoid import issues in preload)
+// Types for Projects (Synced with shared/types.ts)
+export type ModuleType =
+    'LED' | 'NEOPIXEL' | 'TEMP_SENSOR' | 'RELAY' | 'BUTTON' | 'PWM' |
+    'ADC' | 'WIFI' | 'CLOCK' | 'TIDE' | 'ENCODER' | 'PIR' | 'LDR' |
+    'WEB_SERVER' | 'MQTT' | 'OTA' | 'UDP' |
+    'ESPNOW' | 'BLE' | 'DISPLAY' | 'NVS' | 'AUTOMATION' | 'MODE' | 'TELEMETRY' | 'AUDIO' | 'SERVO' | 'TOUCH';
+
 export interface ModuleConfig {
     id: string;
-    type: 'LED' | 'BUTTON' | 'SENSOR';
+    type: ModuleType;
     name: string;
     pin: number;
     inverted?: boolean;
+    // Configs específicos (Type loose for preload to avoid huge copy-paste, can be refined)
+    neoPixelConfig?: any;
+    sensorConfig?: any;
+    wifiConfig?: any;
+    clockConfig?: any;
+    tideConfig?: any;
+    webServerConfig?: any;
+    mqttConfig?: any;
+    otaConfig?: any;
+    udpConfig?: any;
+    espNowConfig?: any;
+    bleConfig?: any;
+    displayConfig?: any;
+    nvsConfig?: any;
+    ldrConfig?: any;
+    automationConfig?: any;
+    modeConfig?: any;
+    telemetryConfig?: any;
+    audioConfig?: any;
+    servoConfig?: any;
+    touchConfig?: any;
+    options?: any;
 }
 
 export interface ProjectData {

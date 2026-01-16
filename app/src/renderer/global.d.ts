@@ -185,11 +185,12 @@ interface TideLogicInput {
 }
 
 // Class type definition
-declare class TideVisuals {
-    constructor(config?: Partial<TideLogicConfig>);
-    update(dt: number, input: TideLogicInput): void;
-    render(count: number, width: number, height: number): { r: number, g: number, b: number }[];
-}
+// Class type definition (Moved to tide-visuals.ts to avoid duplicate identifier)
+// declare class TideVisuals {
+//     constructor(config?: Partial<TideLogicConfig>);
+//     update(dt: number, input: TideLogicInput): void;
+//     render(count: number, width: number, height: number): { r: number, g: number, b: number }[];
+// }
 
 interface Window {
     serial: SerialAPI;

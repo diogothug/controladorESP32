@@ -119,7 +119,6 @@ export const ANIMATION_LIST: { id: AnimationType; name: string; emoji: string }[
     { id: 'AURORA', name: 'Aurora', emoji: '🌌' },
     { id: 'WAVE', name: 'Onda', emoji: '🌊' },
     { id: 'FISH', name: 'Peixe', emoji: '🐠' },
-    { id: 'FISH', name: 'Peixe', emoji: '🐠' },
     { id: 'TIDE', name: 'Maré (V2)', emoji: '🌊' },
     { id: 'TIDE_SIMPLE', name: 'Maré (Simples)', emoji: '📊' },
     { id: 'TIDE_WAVE', name: 'Maré (Onda)', emoji: '🌊' },

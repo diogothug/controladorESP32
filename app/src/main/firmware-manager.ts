@@ -4,9 +4,14 @@ import * as fs from 'fs';
 
 // Paths para ferramentas
 const TOOLS_DIR = path.join(__dirname, '../../tools');
-const ARDUINO_CLI = path.join(TOOLS_DIR, 'arduino-cli', 'arduino-cli.exe');
+const IS_WINDOWS = process.platform === 'win32';
+const EXE_EXT = IS_WINDOWS ? '.exe' : '';
+
+const ARDUINO_CLI = path.join(TOOLS_DIR, 'arduino-cli', `arduino-cli${EXE_EXT}`);
+
 // Em dev, usa o ampy do venv. Em prod, esperaria estar no path ou empacotado.
-const AMPY_CMD = path.resolve(__dirname, '../../../.venv/Scripts/ampy.exe');
+// Melhorando robustez: tentar path relativo primeiro, fallback para global se necessário
+const AMPY_CMD = path.resolve(__dirname, `../../../.venv/${IS_WINDOWS ? 'Scripts' : 'bin'}/ampy${EXE_EXT}`);
 
 // Templates dir
 const TEMPLATES_DIR = path.join(__dirname, '../../templates');
