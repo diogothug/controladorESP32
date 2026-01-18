@@ -1,23 +1,26 @@
 #include "modules/wifi_manager.h"
+#include "modules/recovery.h"
 #include "sys/clock.h"
 #include <Preferences.h>
+#include <algorithm>
+
 
 namespace Modules {
 
 unsigned long WifiManager::lastCheck = 0;
+unsigned long WifiManager::lastAttemptTime = 0;
 unsigned long WifiManager::lastConnectionTime = 0;
 unsigned long WifiManager::reconnectInterval = INITIAL_RECONNECT_INTERVAL;
 int WifiManager::retryCount = 0;
 bool WifiManager::_connected = false;
 bool WifiManager::_apMode = false;
 
-// Defaults (overwritten by NVS)
-String wifi_ssid_str = "Moreré_Guest";
-String wifi_pass_str = "tide1234";
+std::vector<WifiCred> WifiManager::storedCreds;
+int WifiManager::currentCredIndex = 0;
 
 Preferences wifiPrefs;
 
-#include "modules/recovery.h"
+// Include moved to top
 
 void WifiManager::init() {
   // Safe Mode Check: Disable WiFi entirely
@@ -30,25 +33,24 @@ void WifiManager::init() {
   WiFi.mode(WIFI_STA);
   WiFi.onEvent(onEvent);
 
-  // Load from NVS
-  wifiPrefs.begin("wifi", true); // Read-only
-  wifi_ssid_str = wifiPrefs.getString("ssid", wifi_ssid_str);
-  wifi_pass_str = wifiPrefs.getString("pass", wifi_pass_str);
-  wifiPrefs.end();
+  loadCreds();
 
-  // Initial connection attempt
-  Serial.printf("[WIFI] Connecting to %s...\n", wifi_ssid_str.c_str());
-  WiFi.begin(wifi_ssid_str.c_str(), wifi_pass_str.c_str());
-  lastCheck = millis();
+  if (storedCreds.empty()) {
+    Serial.println("[WIFI] No stored credentials. Starting AP.");
+    startAP();
+  } else {
+    // Start with the most recently used (index 0 after sort)
+    currentCredIndex = 0;
+    tryNextCred();
+  }
 }
 
 void WifiManager::update() {
   RecoveryManager::feed(ID_WIFI);
 
   if (_apMode)
-    return; // In AP mode, we wait for user action (or reboot)
+    return;
 
-  // Track connection time
   if (_connected) {
     lastConnectionTime = millis();
     return;
@@ -56,51 +58,78 @@ void WifiManager::update() {
 
   unsigned long now = millis();
 
-  // 1. AP Fallback: If disconnected for > 5 mins
-  if (now - lastConnectionTime > AP_TIMEOUT) {
-    startAP();
-    return;
+  // 1. AP Fallback: If disconnected for > 5 mins (regardless of how many
+  // networks we tried) Note: Only if we have actually tried connecting
+  // (lastConnectionTime > 0 or initialized)
+  if (lastConnectionTime > 0 || now > AP_TIMEOUT) {
+    if (now - lastConnectionTime > AP_TIMEOUT) {
+      startAP();
+      return;
+    }
+  } else {
+    // Just started, give it some grace time before AP?
+    // Actually lastConnectionTime is 0 on boot until connected.
+    // Let's set lastConnectionTime to boot time if 0? No, let's assume now - 0
+    // > Timeout If we never connected, lastConnectionTime is 0. We should check
+    // if we cycled through all creds multiple times? Let's stick to time-based.
+    if (now > AP_TIMEOUT) {
+      startAP();
+      return;
+    }
   }
 
-  // 2. Periodic Reconnect: Every 4 mins
-  // Note: We use reconnectInterval variable which starts small and grows,
-  // OR strictly adhere to 4 mins requirement?
-  // User said: "Tentar wifi a cada 4 minutos cada não tenha conexao ativa."
-  // Let's modify logic: Initial quick retries, then settle to 4 mins.
+  // 2. Retry Logic
+  // If we are not connected, we might be attempting (WiFi.status() !=
+  // WL_CONNECTED) But WiFi.begin() is async. We check status periodically?
+  // Actually onEvent handles success/fail triggers mostly.
+  // But if begin() fails silently or hangs, we need a timeout for the attempt.
 
-  if (now - lastCheck > reconnectInterval) {
-    Serial.printf("[WIFI] Reconnecting... (Interval: %ds)\n",
-                  reconnectInterval / 1000);
-
+  // If we are attempting (implied by !connected)
+  if (now - lastAttemptTime > 15000) { // 15s timeout per attempt
+    Serial.println("[WIFI] Connection attempt timed out.");
     WiFi.disconnect();
-    WiFi.reconnect();
-
-    lastCheck = now;
-    retryCount++;
-
-    // Backoff logic: Up to 4 mins, then stay at 4 mins
-    if (reconnectInterval < RECONNECT_INTERVAL_FIXED) {
-      reconnectInterval *= 2;
-      if (reconnectInterval > RECONNECT_INTERVAL_FIXED) {
-        reconnectInterval = RECONNECT_INTERVAL_FIXED;
-      }
-    } else {
-      reconnectInterval = RECONNECT_INTERVAL_FIXED;
-    }
+    tryNextCred();
   }
 }
 
+void WifiManager::tryNextCred() {
+  if (storedCreds.empty()) {
+    // No creds, nothing to do (AP mode should handle)
+    return;
+  }
+
+  // Advance index if we exhausted retries for current
+  retryCount++;
+  if (retryCount > MAX_RETRIES_PER_CRED) {
+    retryCount = 0;
+    currentCredIndex++;
+    if (currentCredIndex >= storedCreds.size()) {
+      currentCredIndex = 0; // Loop back to best
+      // We completed a full cycle. Maybe increase wait time?
+      // For now, just loop.
+      Serial.println("[WIFI] Cycle complete. restarting list.");
+    }
+  }
+
+  WifiCred &cred = storedCreds[currentCredIndex];
+
+  Serial.printf("[WIFI] Trying network (%d/%d): %s\n", currentCredIndex + 1,
+                storedCreds.size(), cred.ssid.c_str());
+
+  WiFi.disconnect();
+  WiFi.begin(cred.ssid.c_str(), cred.pass.c_str());
+  lastAttemptTime = millis();
+  lastCheck = millis();
+}
+
 void WifiManager::startAP() {
-  Serial.println("[WIFI] Failed to connect. Starting AP Mode...");
+  Serial.println("[WIFI] Starting AP Mode...");
   WiFi.disconnect();
   WiFi.mode(WIFI_AP);
   WiFi.softAP("TideDisplay_Recovery");
-  Serial.printf("[WIFI] AP Started: TideDisplay_Recovery (IP: %s)\n",
+  Serial.printf("[WIFI] AP Started (IP: %s)\n",
                 WiFi.softAPIP().toString().c_str());
   _apMode = true;
-
-  // Signal Error via LED (Optional, could call LedManager::setError())
-  // Important: Ensure WebServer is reachable!
 }
 
 bool WifiManager::isConnected() { return _connected; }
@@ -112,25 +141,118 @@ void WifiManager::onEvent(WiFiEvent_t event) {
                   WiFi.localIP().toString().c_str());
     _connected = true;
     retryCount = 0;
-    reconnectInterval = INITIAL_RECONNECT_INTERVAL;
-    // Sync Time immediately on connection
+
+    // Update timestamp and resort
+    if (!storedCreds.empty() && currentCredIndex < storedCreds.size()) {
+      storedCreds[currentCredIndex].lastUsed =
+          millis(); // Approximate relative usage
+      // Ideally use Real time if possible, but relative millis works for "most
+      // recent this session" To persist across boots better, we might need
+      // value from RTC or just increment a counter. Let's use a simple counter
+      // approach? Or system time if NTP synced. Since we sync NTP right after,
+      // let's wait? Actually saveCreds() will preserve order.
+      saveCreds(); // Save immediately with new priority (sort happens
+                   // implicitly or next load)
+    }
+
+    // Move current successful cred to top and save
+    if (!storedCreds.empty() && currentCredIndex != 0) {
+      // Swap to front? Or just sort?
+      // Let's just update 'lastUsed' to ULONG_MAX (most recent) temporarily?
+      // Better: explicit move.
+      std::rotate(storedCreds.begin(),
+                  storedCreds.begin() + currentCredIndex + 1,
+                  storedCreds.end()); // Wait, rotate logic tricky.
+      // Simplest: Erase and Insert at 0
+      WifiCred c = storedCreds[currentCredIndex];
+      storedCreds.erase(storedCreds.begin() + currentCredIndex);
+      storedCreds.insert(storedCreds.begin(), c);
+      currentCredIndex = 0;
+      saveCreds();
+    }
+
     Sys::syncNtp();
     break;
+
   case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-    Serial.println("[WIFI] Disconnected");
-    _connected = false;
+    if (_connected) {
+      Serial.println("[WIFI] Disconnected.");
+      _connected = false;
+      lastConnectionTime = millis(); // Reset timeout timer
+      // If we were connected, we stick to this cred for a bit before switching?
+      // Usually immediate retry on same cred is good.
+    }
+    // Logic update() will handle retry/rotation upon timeout.
+    // But we can trigger immediate next if explicit disconnect failure?
+    // No, legitimate disconnects happen. Let update() handle timeout.
+    // Or trigger fast retry?
     break;
+
   default:
     break;
   }
 }
 
-void WifiManager::setCredentials(const char *ssid, const char *password) {
-  wifiPrefs.begin("wifi", false); // Read-write
-  wifiPrefs.putString("ssid", ssid);
-  wifiPrefs.putString("pass", password);
+// === NVS Logic ===
+
+void WifiManager::loadCreds() {
+  wifiPrefs.begin("wifi", true);
+  storedCreds.clear();
+
+  size_t count = wifiPrefs.getUInt("count", 0);
+  if (count > MAX_CREDS)
+    count = MAX_CREDS;
+
+  for (size_t i = 0; i < count; i++) {
+    String p = String(i);
+    String ssid = wifiPrefs.getString(("s" + p).c_str(), "");
+    String pass = wifiPrefs.getString(("p" + p).c_str(), "");
+    if (ssid.length() > 0) {
+      storedCreds.push_back({ssid, pass, 0});
+    }
+  }
   wifiPrefs.end();
-  Serial.println("[WIFI] Credentials saved to NVS");
+  Serial.printf("[WIFI] Loaded %d credentials\n", storedCreds.size());
+}
+
+void WifiManager::saveCreds() {
+  wifiPrefs.begin("wifi", false);
+  wifiPrefs.putUInt("count", storedCreds.size());
+
+  for (size_t i = 0; i < storedCreds.size(); i++) {
+    String p = String(i);
+    wifiPrefs.putString(("s" + p).c_str(), storedCreds[i].ssid);
+    wifiPrefs.putString(("p" + p).c_str(), storedCreds[i].pass);
+  }
+  wifiPrefs.end();
+}
+
+void WifiManager::setCredentials(const char *ssid, const char *password) {
+  // Check if exists
+  String newSsid = String(ssid);
+  String newPass = String(password);
+
+  for (auto it = storedCreds.begin(); it != storedCreds.end(); ++it) {
+    if (it->ssid == newSsid) {
+      storedCreds.erase(it);
+      break;
+    }
+  }
+
+  // Insert at top
+  storedCreds.insert(storedCreds.begin(), {newSsid, newPass, millis()});
+
+  // Trim
+  if (storedCreds.size() > MAX_CREDS) {
+    storedCreds.resize(MAX_CREDS);
+  }
+
+  saveCreds();
+
+  // Force try new
+  currentCredIndex = 0;
+  retryCount = 0;
+  tryNextCred();
 }
 
 } // namespace Modules

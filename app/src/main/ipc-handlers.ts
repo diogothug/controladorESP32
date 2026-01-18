@@ -51,6 +51,24 @@ export function registerIpcHandlers(mainWindow: any): void {
         return serialManager.getState();
     });
 
+    // === Settings API ===
+
+    // Lazy load SettingsManager to avoid circular deps if any (though unlikely here)
+    const { SettingsManager } = require('./settings-manager');
+
+    ipcMain.handle('settings:get', async (_: any, key: string) => {
+        return SettingsManager.getInstance().get(key);
+    });
+
+    ipcMain.handle('settings:set', async (_: any, key: string, value: any) => {
+        SettingsManager.getInstance().set(key, value);
+        return true;
+    });
+
+    ipcMain.handle('serial:list', async () => {
+        return serialManager.listPorts();
+    });
+
     // Retorna info do dispositivo
     ipcMain.handle('serial:get-device-info', (): DeviceInfo | null => {
         return serialManager.getDeviceInfo();
@@ -386,6 +404,12 @@ export function registerIpcHandlers(mainWindow: any): void {
         } catch (error: any) {
             return { success: false, error: error.message };
         }
+    });
+
+    // === Telemetry Handlers ===
+    ipcMain.handle('telemetry:track-event', async (_: any, eventName: string, props?: any): Promise<void> => {
+        // Map generic events to usage for now, could be more granular
+        TelemetryService.getInstance().trackUsage(eventName, props);
     });
 
     // === Event Callbacks ===

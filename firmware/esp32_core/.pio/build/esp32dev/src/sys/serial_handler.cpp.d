@@ -134,8 +134,7 @@
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/include/soc/esp32/spiram.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- include/config.h include/sys/state.h include/sys/clock.h \
- include/modules/led_manager.h \
+ include/config.h include/modules/led_manager.h \
  .pio/libdeps/esp32dev/FastLED/src/FastLED.h \
  .pio/libdeps/esp32dev/FastLED/src/fl/stdint.h \
  .pio/libdeps/esp32dev/FastLED/src/fl/dll.h \
@@ -286,7 +285,10 @@
  .pio/libdeps/esp32dev/FastLED/src/platforms/ui_defs.h \
  .pio/libdeps/esp32dev/FastLED/src/sensors/button.h \
  .pio/libdeps/esp32dev/FastLED/src/sensors/digital_pin.h \
- include/modules/wifi_manager.h \
+ include/modules/recovery.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_system/include/esp_task_wdt.h \
+ include/modules/touch_manager.h include/modules/wifi_manager.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFi.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPv6Address.h \
@@ -346,4 +348,5 @@
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Server.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
- C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
+ include/sys/clock.h include/sys/state.h

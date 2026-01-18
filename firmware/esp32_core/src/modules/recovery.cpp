@@ -11,7 +11,9 @@ bool RecoveryManager::_safeMode = false;
 unsigned long RecoveryManager::_heartbeats[ID_COUNT] = {0};
 
 // Max silence allowed before triggering recovery action (ms)
-const unsigned long RecoveryManager::_thresholds[ID_COUNT] = {
+// Max silence allowed before triggering recovery action (ms)
+// Non-const for runtime tuning (V2)
+unsigned long RecoveryManager::_thresholds[ID_COUNT] = {
     0,     // ID_SYSTEM (Not used for logic check)
     2000,  // ID_LED: Animation should be smooth (<1.5s usually)
     70000, // ID_TIDE: Data fetch/calc (60s warn)
@@ -26,6 +28,17 @@ void RecoveryManager::init() {
 
   // 1. Crash Loop Detection (Power/Brownout Layer)
   checkCrashLoop();
+
+  // Load custom thresholds from NVS (V2)
+  prefs.begin("recovery", true);
+  for (int i = 1; i < ID_COUNT; i++) {
+    char key[16];
+    snprintf(key, sizeof(key), "th_%d", i);
+    unsigned long val = prefs.getULong(key, 0);
+    if (val > 0)
+      _thresholds[i] = val;
+  }
+  prefs.end();
 
   // 2. Setup Hardware Watchdog (System Layer)
   // 8 seconds timeout (panic and reset)
@@ -59,8 +72,37 @@ bool RecoveryManager::isSafeMode() { return _safeMode; }
 
 void RecoveryManager::safeReboot(const char *reason) {
   Serial.printf("[RECOVERY] FATAL: %s. Rebooting...\n", reason);
+
+  // Persist reason for debugging (V2)
+  prefs.begin("recovery", false);
+  prefs.putString("crash_reason", reason);
+  prefs.end();
+
   delay(100);
   ESP.restart();
+}
+
+String RecoveryManager::getLastCrashReason() {
+  prefs.begin("recovery", true);
+  String reason = prefs.getString("crash_reason", "NONE");
+  prefs.end();
+  return reason;
+}
+
+void RecoveryManager::setThreshold(SubsystemID id, unsigned long ms) {
+  if (id >= ID_COUNT)
+    return;
+  _thresholds[id] = ms;
+
+  // Persist
+  prefs.begin("recovery", false);
+  char key[16];
+  snprintf(key, sizeof(key), "th_%d", id);
+  prefs.putULong(key, ms);
+  prefs.end();
+
+  Serial.printf("[RECOVERY] Updated Threshold for %s: %lu ms\n", _names[id],
+                ms);
 }
 
 void RecoveryManager::checkCrashLoop() {

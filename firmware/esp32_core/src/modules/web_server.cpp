@@ -2,8 +2,11 @@
 #include "config.h"
 #include "modules/tide_engine.h"
 #include "modules/wifi_manager.h"
+#include "sys/boot.h"
 #include "sys/state.h"
 #include <ArduinoJson.h>
+#include <ESPmDNS.h>
+#include <SPIFFS.h>
 
 namespace Modules {
 
@@ -110,7 +113,7 @@ void WebServerModule::handleRoot() {
     // Redirect to root if specific captive portal URL requested
     if (server.uri() != "/") {
       server.sendHeader(
-          "Location", String("http://") + toStringIp(server.client().localIP()),
+          "Location", String("http://") + server.client().localIP().toString(),
           true);
       server.send(302, "text/plain", "");
       return;
@@ -122,7 +125,7 @@ void WebServerModule::handleRoot() {
 void WebServerModule::handleNotFound() {
   if (isCaptivePortal()) {
     server.sendHeader("Location",
-                      String("http://") + toStringIp(server.client().localIP()),
+                      String("http://") + server.client().localIP().toString(),
                       true);
     server.send(302, "text/plain", "");
   } else {
@@ -216,7 +219,4 @@ bool WebServerModule::isCaptivePortal() {
   }
   return false;
 }
-
-// Helper to replace the missing toStringIp since IPAddress has toString()
-String toStringIp(IPAddress ip) { return ip.toString(); }
 } // namespace Modules

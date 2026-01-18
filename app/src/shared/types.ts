@@ -480,3 +480,18 @@ export interface FirmwareAPI {
     uploadMicroPythonContent: (code: string, port: string, destPath?: string) => Promise<UploadResult>;
     resetESP32: (port: string) => Promise<UploadResult>;
 }
+
+// === GENERATOR V2 TYPES ===
+export interface ValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+}
+
+export interface ModulePreset {
+    id: string;
+    name: string;
+    description: string;
+    modules: Partial<ModuleConfig>[]; // Can be partial configurations
+    icon?: string; // Optional emoji/icon
+}

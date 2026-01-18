@@ -194,4 +194,7 @@
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
+ include/modules/recovery.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_system/include/esp_task_wdt.h \
  include/sys/clock.h

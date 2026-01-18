@@ -1,6 +1,7 @@
 import { exec, spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { TelemetryService } from './telemetry-service';
 
 // Paths para ferramentas
 const TOOLS_DIR = path.join(__dirname, '../../tools');
@@ -161,6 +162,15 @@ export class FirmwareManager {
             const cmd = `"${this.arduinoCliPath}" compile --upload --fqbn ${fqbn} --port ${port} "${sketchPath}"`;
 
             exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
+                if (error) {
+                    // Telemetry
+                    TelemetryService.getInstance().trackEvent('FIRMWARE_ERROR', {
+                        operation: 'upload_arduino',
+                        error: error.message,
+                        stderr: stderr,
+                        port
+                    });
+                }
                 resolve({
                     success: !error,
                     output: error ? (stderr || error.message) : stdout

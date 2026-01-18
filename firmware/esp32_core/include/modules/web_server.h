@@ -3,7 +3,6 @@
 #include <DNSServer.h>
 #include <WebServer.h>
 
-
 namespace Modules {
 
 class WebServerModule {
@@ -22,8 +21,7 @@ private:
   // API Endpoints
   static void handleApiStatus();
   static void handleApiTide();
-  static void handleApiStatus();
-  static void handleApiTide();
+
   static void handleApiConfig();
   static void handleApiFeedback();
 

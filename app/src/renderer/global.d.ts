@@ -165,8 +165,28 @@ interface ProjectsAPI {
     delete: (id: string) => Promise<boolean>;
 }
 
+interface SettingsAPI {
+    get: (key: string) => Promise<any>;
+    set: (key: string, value: any) => Promise<boolean>;
+}
+
 
 // Tide Visuals Logic Interface (defined in tide-visuals.ts)
+// ... (omitted for brevity, keep existing) ...
+
+interface Window {
+    serial: SerialAPI;
+    firmware: FirmwareAPI;
+    projects: ProjectsAPI;
+    settings: SettingsAPI;
+    externalAPI: {
+        fetch: (url: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+        getWeather: (lat: number, lon: number) => Promise<{ success: boolean; data?: any; error?: string }>;
+        getTide: (porto: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+        getMoon: () => Promise<{ success: boolean; data?: any; error?: string }>;
+    };
+    TideVisuals: typeof TideVisuals; // Constructor
+}
 interface TideLogicConfig {
     brightnessMax: number;
     smoothTau: number;
@@ -198,3 +218,5 @@ interface Window {
     projects: ProjectsAPI;
     TideVisuals: typeof TideVisuals; // Constructor
 }
+
+declare var externalAPI: { fetch: (url: string) => Promise<{ success: boolean; data?: any; error?: string }>; getWeather: (lat: number, lon: number) => Promise<{ success: boolean; data?: any; error?: string }>; getTide: (porto: string) => Promise<{ success: boolean; data?: any; error?: string }>; getMoon: () => Promise<{ success: boolean; data?: any; error?: string }>; };

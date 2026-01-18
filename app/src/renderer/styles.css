@@ -606,6 +606,35 @@ select,
   min-height: 500px;
 }
 
+/* === Safe Mode Banner === */
+.safe-mode-banner {
+  background: var(--danger-emphasis);
+  color: white;
+  padding: 10px 20px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(218, 54, 51, 0.4);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* === Cards === */
 /* === GLASSMORPHISM CARDS (GlassyUI + glassFolio) === */
 .card {
@@ -2861,99 +2890,100 @@ input[type="number"] {
 .toast-type-warning .toast-icon {
   color: var(--warning);
 }
+
 /* Animation Creator Layout */
 .animation-creator-layout {
-    display: grid;
-    grid-template-columns: 260px 1fr 260px;
-    gap: 20px;
-    height: calc(100vh - 100px);
-    overflow: hidden;
-    padding: 0 10px;
+  display: grid;
+  grid-template-columns: 260px 1fr 260px;
+  gap: 20px;
+  height: calc(100vh - 100px);
+  overflow: hidden;
+  padding: 0 10px;
 }
 
 .creator-sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-    padding-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-bottom: 20px;
 }
 
 .creator-main {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    min-width: 0;
-    overflow-y: auto;
-    padding-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  overflow-y: auto;
+  padding-bottom: 20px;
 }
 
 .preview-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 20px;
-    min-height: 300px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  min-height: 300px;
 }
 
 .led-canvas {
-    background: #000;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-    max-width: 100%;
+  background: #000;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  max-width: 100%;
 }
 
 .timeline-strip {
-    display: flex;
-    gap: 5px;
-    overflow-x: auto;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    margin-bottom: 10px;
-    height: 60px;
-    align-items: center;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  height: 60px;
+  align-items: center;
 }
 
 .frame-thumb {
-    width: 40px;
-    height: 40px;
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    cursor: pointer;
-    flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .frame-thumb.active {
-    border-color: var(--primary);
-    background: var(--primary-dim);
-    box-shadow: 0 0 10px var(--primary-dim);
+  border-color: var(--primary);
+  background: var(--primary-dim);
+  box-shadow: 0 0 10px var(--primary-dim);
 }
 
 .effects-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
 
 .effect-btn {
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
-    border-radius: 6px;
-    color: var(--text-main);
-    text-align: left;
-    transition: all 0.2s;
-    font-size: 0.85rem;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  color: var(--text-main);
+  text-align: left;
+  transition: all 0.2s;
+  font-size: 0.85rem;
 }
 
 .effect-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--primary);
 }

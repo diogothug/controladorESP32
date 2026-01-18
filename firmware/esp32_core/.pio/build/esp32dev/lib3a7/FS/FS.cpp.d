@@ -1,5 +1,5 @@
 .pio/build/esp32dev/lib3a7/FS/FS.cpp.o: \
- C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/fs.cpp \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.cpp \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \

@@ -1,4 +1,5 @@
-.pio/build/esp32dev/src/main.cpp.o: src/main.cpp \
+.pio/build/esp32dev/src/main.cpp.o: src/main.cpp include/config.h \
+ include/modules/led_manager.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include/freertos/FreeRTOS.h \
@@ -133,9 +134,6 @@
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/include/soc/esp32/spiram.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- include/config.h include/sys/watchdog.h include/sys/boot.h \
- include/sys/state.h include/sys/clock.h include/sys/serial_handler.h \
- include/modules/led_manager.h \
  .pio/libdeps/esp32dev/FastLED/src/FastLED.h \
  .pio/libdeps/esp32dev/FastLED/src/fl/stdint.h \
  .pio/libdeps/esp32dev/FastLED/src/fl/dll.h \
@@ -286,7 +284,16 @@
  .pio/libdeps/esp32dev/FastLED/src/platforms/ui_defs.h \
  .pio/libdeps/esp32dev/FastLED/src/sensors/button.h \
  .pio/libdeps/esp32dev/FastLED/src/sensors/digital_pin.h \
- include/modules/wifi_manager.h \
+ include/modules/recovery.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_system/include/esp_task_wdt.h \
+ include/modules/tide_engine.h include/modules/touch_manager.h \
+ include/modules/web_server.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src/DNSServer.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/WebServer.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFi.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPv6Address.h \
@@ -345,6 +352,11 @@
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiServer.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Server.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
- C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
- C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
- include/modules/tide_engine.h
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/HTTP_Method.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/nghttp/port/include/http_parser.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/Uri.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/detail/RequestHandler.h \
+ include/modules/wifi_manager.h include/sys/clock.h \
+ include/sys/serial_handler.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/LittleFS/src/LittleFS.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h

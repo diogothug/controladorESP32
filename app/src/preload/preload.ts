@@ -145,10 +145,19 @@ export interface ProjectData {
 }
 
 const projectsAPI = {
-    save: (data: Partial<ProjectData>): Promise<ProjectData> => ipcRenderer.invoke('projects:save', data),
-    load: (id: string): Promise<ProjectData | null> => ipcRenderer.invoke('projects:load', id),
-    list: (): Promise<ProjectData[]> => ipcRenderer.invoke('projects:list'),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke('projects:delete', id)
+    // Projects API
+    projects: {
+        save: (data: any) => ipcRenderer.invoke('projects:save', data),
+        load: (id: string) => ipcRenderer.invoke('projects:load', id),
+        list: () => ipcRenderer.invoke('projects:list'),
+        delete: (id: string) => ipcRenderer.invoke('projects:delete', id)
+    },
+
+    // Settings API
+    settings: {
+        get: (key: string) => ipcRenderer.invoke('settings:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value)
+    }
 };
 
 // Device Templates API
@@ -204,12 +213,17 @@ const externalAPI = {
         ipcRenderer.invoke('api:moon'),
 };
 
+const telemetryAPI = {
+    trackEvent: (eventName: string, props?: any): Promise<void> => ipcRenderer.invoke('telemetry:track-event', eventName, props)
+};
+
 contextBridge.exposeInMainWorld('serial', serialAPI);
 contextBridge.exposeInMainWorld('firmware', firmwareAPI);
 contextBridge.exposeInMainWorld('projects', projectsAPI);
 contextBridge.exposeInMainWorld('templates', templatesAPI);
 contextBridge.exposeInMainWorld('tide', tideAPI);
 contextBridge.exposeInMainWorld('externalAPI', externalAPI);
+contextBridge.exposeInMainWorld('telemetry', telemetryAPI);
 
 // TypeScript declarations for renderer
 interface Window {

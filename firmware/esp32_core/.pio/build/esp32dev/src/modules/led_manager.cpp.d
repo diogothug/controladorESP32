@@ -1,5 +1,6 @@
 .pio/build/esp32dev/src/modules/led_manager.cpp.o: \
  src/modules/led_manager.cpp include/modules/led_manager.h \
+ include/config.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \
  C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include/freertos/FreeRTOS.h \
@@ -283,4 +284,7 @@
  .pio/libdeps/esp32dev/FastLED/src/fl/ui_impl.h \
  .pio/libdeps/esp32dev/FastLED/src/platforms/ui_defs.h \
  .pio/libdeps/esp32dev/FastLED/src/sensors/button.h \
- .pio/libdeps/esp32dev/FastLED/src/sensors/digital_pin.h include/config.h
+ .pio/libdeps/esp32dev/FastLED/src/sensors/digital_pin.h \
+ include/modules/recovery.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
+ C:/Users/diogo/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_system/include/esp_task_wdt.h

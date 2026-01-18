@@ -1,10 +1,12 @@
 #include "sys/serial_handler.h"
 #include "config.h"
 #include "modules/led_manager.h"
+#include "modules/recovery.h"
 #include "modules/touch_manager.h"
 #include "modules/wifi_manager.h"
 #include "sys/clock.h"
 #include "sys/state.h"
+
 
 namespace Sys {
 
@@ -89,6 +91,36 @@ void SerialHandler::handleBoot(String cmd) {
       setBootMode(BootMode::SAFE_MODE);
     Serial.println("OK:BOOT:SET");
     return;
+  }
+}
+
+void SerialHandler::handleSys(String cmd) {
+  if (cmd == "SYS:PING") {
+    Serial.println("OK:SYS:PONG");
+  } else if (cmd == "SYS:RESET") {
+    Serial.println("OK:SYS:RESETTING");
+    ESP.restart();
+  } else if (cmd == "SYS:SAFE_MODE?") {
+    Serial.printf("OK:SAFE_MODE:%d\n",
+                  Modules::RecoveryManager::isSafeMode() ? 1 : 0);
+  } else if (cmd == "SYS:CRASH_LOG?") {
+    Serial.printf("OK:CRASH_LOG:%s\n",
+                  Modules::RecoveryManager::getLastCrashReason().c_str());
+  } else if (cmd.startsWith("SYS:WDT:SET:")) {
+    // SYS:WDT:SET:<ID>:<MS>
+    // Assuming ID is single digit for simplicity or we parse properly
+    int firstColon = 11; // Length of "SYS:WDT:SET:"
+    int secondColon = cmd.indexOf(':', firstColon);
+    if (secondColon > 0) {
+      int id = cmd.substring(firstColon, secondColon).toInt();
+      int ms = cmd.substring(secondColon + 1).toInt();
+      Modules::RecoveryManager::setThreshold((Modules::SubsystemID)id, ms);
+      Serial.println("OK:SYS:WDT:SET");
+    } else {
+      Serial.println("ERR:SYS:ARGS");
+    }
+  } else {
+    Serial.println("ERR:SYS:UNKNOWN");
   }
 }
 

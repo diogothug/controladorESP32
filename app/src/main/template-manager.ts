@@ -535,6 +535,61 @@ export class TemplateManager {
         }
         return map;
     }
+
+    /**
+     * Get available module presets (Recipes)
+     */
+    getModulePresets(): import('../shared/types').ModulePreset[] {
+        return [
+            {
+                id: 'basic_iot',
+                name: 'Basic IoT Device',
+                description: 'Simple connectivity setup with status LED',
+                icon: '🌐',
+                modules: [
+                    { type: 'WIFI', name: 'WiFi Connection', pin: 0 },
+                    { type: 'LED', name: 'Status LED', pin: 2 },
+                    { type: 'TELEMETRY', name: 'Telemetry (Optional)', pin: 0 }
+                ]
+            },
+            {
+                id: 'tide_tracker',
+                name: 'Tide Tracker',
+                description: 'Marine monitor with Tide API and LED display',
+                icon: '🌊',
+                modules: [
+                    { type: 'WIFI', name: 'WiFi', pin: 0 },
+                    { type: 'TIDE', name: 'Tide Engine', pin: 0 },
+                    { type: 'NEOPIXEL', name: 'Tide Ring', pin: 4 },
+                    { type: 'LDR', name: 'Auto Brightness', pin: 34 }
+                ]
+            },
+            {
+                id: 'smart_plug',
+                name: 'Smart Plug',
+                description: 'WiFi controlled relay with physical button',
+                icon: '🔌',
+                modules: [
+                    { type: 'WIFI', name: 'WiFi', pin: 0 },
+                    { type: 'RELAY', name: 'Main Power', pin: 12 },
+                    { type: 'BUTTON', name: 'Toggle Button', pin: 0 },
+                    { type: 'LED', name: 'Status Light', pin: 13 }
+                ]
+            },
+            {
+                id: 'temp_monitor',
+                name: 'Temperature Monitor',
+                description: 'Environment sensor with logs',
+                icon: '🌡️',
+                modules: [
+                    { type: 'WIFI', name: 'WiFi', pin: 0 },
+                    { type: 'TEMP_SENSOR', name: 'DHT Module', pin: 14 },
+                    { type: 'MQTT', name: 'Home Assistant', pin: 0 },
+                    { type: 'TELEMETRY', name: 'Analytics', pin: 0 }
+                ]
+            }
+        ];
+    }
 }
 
 // Singleton export

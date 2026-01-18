@@ -3,9 +3,10 @@
  * Composes firmware from base + module snippets
  */
 
-import { ModuleConfig, FirmwareIntent } from '../shared/types';
+import { ModuleConfig, FirmwareIntent, ValidationResult } from '../shared/types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateConfiguration } from './validator';
 
 // Module snippet structure
 interface ModuleSnippet {
@@ -52,6 +53,17 @@ const MODULE_SNIPPETS: Record<string, (config: ModuleConfig, intent: FirmwareInt
 export function generateModularMicroPython(intent: FirmwareIntent): string {
     const modules = intent.modules;
     console.log(`[Backend-FW-Gen] Generating firmware for ${modules.length} modules... Intent: ${intent.appName}`);
+
+    // Validation V2
+    const validation = validateConfiguration(modules);
+    if (!validation.valid) {
+        const errorMsg = `Firmware Validation Failed:\n${validation.errors.join('\n')}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+    }
+    if (validation.warnings.length > 0) {
+        console.warn(`[Backend-FW-Gen] Validation Warnings:\n${validation.warnings.join('\n')}`);
+    }
 
     // Collect snippets from all modules
     const snippets = modules.map(mod => {

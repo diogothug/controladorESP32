@@ -8,7 +8,8 @@
         "watch:ts": "tsc -w",
         "watch:electron": "electron .",
         "start": "npm run build && electron .",
-        "dev": "concurrently -k \"npm run watch:ts\" \"npm run watch:electron\""
+        "dev": "concurrently -k \"npm run watch:ts\" \"npm run watch:electron\"",
+        "test": "jest"
     },
     "dependencies": {
         "esptool-js": "^0.5.7",
@@ -17,11 +18,14 @@
     },
     "devDependencies": {
         "@electron/rebuild": "^4.0.2",
+        "@types/jest": "^30.0.0",
         "@types/node": "^20.0.0",
         "@types/uuid": "^9.0.1",
         "concurrently": "^9.2.1",
         "electron": "^33.0.0",
         "electron-reload": "^2.0.0-alpha.1",
+        "jest": "^30.2.0",
+        "ts-jest": "^29.4.6",
         "typescript": "^5.0.0"
     },
     "author": "",

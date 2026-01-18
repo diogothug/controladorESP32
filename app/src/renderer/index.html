@@ -53,12 +53,20 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="nav-item-footer" id="btn-settings" title="Configurações">
+          <span class="nav-icon">⚙️</span>
+        </button>
         <div id="status-badge" class="status-indicator">
           <span class="status-dot"></span>
           <span class="status-text">Disconnected</span>
         </div>
       </div>
     </aside>
+
+    <!-- SAFE MODE BANNER -->
+    <div id="safe-mode-banner" class="safe-mode-banner" style="display: none;">
+      ⚠️ SAFE MODE ACTIVE <span id="safe-mode-reason"></span>
+    </div>
 
     <!-- MAIN CONTENT -->
     <main class="main-content">
@@ -655,10 +663,37 @@
               </div>
 
               <div class="terminal-main">
-                <div id="log-output" class="log-output"></div>
-                <div class="command-input-row">
-                  <input type="text" id="command-input" class="command-input" placeholder="Digite um comando...">
-                  <button id="send-btn" class="btn btn-primary">Enviar</button>
+                <!-- Console Toolbar -->
+                <div id="console-toolbar" class="console-toolbar"
+                  style="display: flex; gap: 10px; margin-bottom: 5px; align-items: center; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 4px;">
+                  <input type="text" id="console-search" placeholder="🔍 Buscar logs..." class="form-input"
+                    style="flex-grow: 1; padding: 4px 8px; font-size: 12px;">
+
+                  <div class="filter-group" style="display: flex; gap: 5px;">
+                    <label style="font-size: 11px; cursor: pointer; color: var(--text-secondary);"><input
+                        type="checkbox" id="filter-info" checked> INFO</label>
+                    <label style="font-size: 11px; cursor: pointer; color: #fbbf24;"><input type="checkbox"
+                        id="filter-warn" checked> WARN</label>
+                    <label style="font-size: 11px; cursor: pointer; color: #ef4444;"><input type="checkbox"
+                        id="filter-error" checked> ERROR</label>
+                  </div>
+
+                  <div class="action-group"
+                    style="display: flex; gap: 5px; border-left: 1px solid rgba(255,255,255,0.1); padding-left: 5px;">
+                    <button id="btn-autoscroll" class="btn-icon active" title="Auto-Scroll"
+                      style="font-size: 14px;">⬇️</button>
+                    <button id="btn-send-diagnostics" class="btn-icon" title="Enviar Diagnóstico"
+                      style="font-size: 14px;">📡</button>
+                    <button id="btn-copy-log" class="btn-icon" title="Copiar Log" style="font-size: 14px;">📋</button>
+                    <button id="btn-clear-log" class="btn-icon" title="Limpar" style="font-size: 14px;">🗑️</button>
+                  </div>
+                </div>
+
+                <div id="log-container" class="log-container"></div>
+                <div class="input-group">
+                  <input type="text" id="serial-input" class="form-input"
+                    placeholder="Digite um comando (ex: LED:ON)...">
+                  <button class="btn btn-primary" id="btn-send">Enviar</button>
                 </div>
               </div>
             </div>
@@ -2386,6 +2421,49 @@
       <div class="modal-footer">
         <button id="servo-modal-cancel" class="btn btn-secondary">Cancelar</button>
         <button id="servo-modal-confirm" class="btn btn-glow">Adicionar Servo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="settings-modal-title">Configurações</h3>
+        <button class="btn-icon" id="settings-modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h4>Privacidade & Dados</h4>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Telemetria e Diagnóstico</span>
+              <span class="setting-desc">Enviar dados anônimos de uso e erros para ajudar a melhorar o app.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="settings-telemetry">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h4>Sobre</h4>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Versão do App</span>
+              <span class="setting-desc" id="app-version">v1.1.0</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Licença</span>
+              <span class="setting-desc">MIT License - Open Source</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="settings-modal-confirm">Fechar</button>
       </div>
     </div>
   </div>
